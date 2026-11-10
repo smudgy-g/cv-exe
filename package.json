@@ -15,7 +15,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run"
+		"test": "npm run test:unit -- --run",
+		"db:migrate": "node --env-file=.env scripts/migrate.js"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-vercel": "^7.0.0",
