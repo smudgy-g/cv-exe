@@ -18,9 +18,11 @@ Set in Vercel (Project → Settings → Environment Variables) and, for local de
 
 ## Develop
 
+Uses pnpm (version pinned in `mise.toml` and `packageManager`). Database changes: `pnpm db:migrate`.
+
 ```sh
-npm install
-npm run dev
-npm run check   # types
-npm test        # unit tests
+pnpm install
+pnpm dev
+pnpm check     # types
+pnpm test      # unit tests
 ```
