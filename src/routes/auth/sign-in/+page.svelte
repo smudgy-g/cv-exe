@@ -1,22 +1,29 @@
 <script lang="ts">
+	import { t } from '#lib/i18n.svelte.js';
 	import type { PageProps } from './$types';
 	let { form }: PageProps = $props();
 </script>
 
-<main>
-	<h1>CV.exe</h1>
-	<form method="POST" action="?/signIn">
-		<label>Email <input name="email" type="email" autocomplete="email" required value={form?.email ?? ''} /></label>
-		<label>Password <input name="password" type="password" autocomplete="current-password" minlength="8" required /></label>
-		{#if form?.error}<p role="alert">{form.error}</p>{/if}
-		<button>Sign in</button>
-		<button formaction="?/signUp">Create account</button>
-	</form>
-</main>
+<svelte:head><title>{t('auth.title')} · CV.exe</title></svelte:head>
+
+<form class="card signin" method="POST" action="?/signIn">
+	<h2>{t('auth.title')}</h2>
+	<p class="hint">{t('auth.hint')}</p>
+	<div class="field">
+		<label for="email">{t('auth.email')}</label>
+		<input id="email" name="email" type="email" autocomplete="email" required value={form?.email ?? ''} />
+	</div>
+	<div class="field" style="margin-top:14px">
+		<label for="password">{t('auth.password')}</label>
+		<input id="password" name="password" type="password" autocomplete="current-password" minlength="8" required />
+	</div>
+	{#if form?.error}<p class="status err" role="alert">{form.error}</p>{/if}
+	<div class="row">
+		<button class="btn">{t('auth.signin')}</button>
+		<button class="btn ghost" formaction="?/signUp">{t('auth.signup')}</button>
+	</div>
+</form>
 
 <style>
-	main { max-width: 360px; margin: 10vh auto; font-family: system-ui, sans-serif; }
-	label { display: block; margin: 12px 0; }
-	input { display: block; width: 100%; padding: 8px; }
-	[role='alert'] { color: #b4372f; }
+	.signin { max-width: 440px; margin: 6vh auto 0; }
 </style>

@@ -84,3 +84,13 @@ export async function deleteApplication(userId: string, id: string): Promise<boo
 	const rows = await sql`delete from applications where id = ${id} and user_id = ${userId} returning id`;
 	return rows.length === 1;
 }
+
+export async function listFullApplications(userId: string): Promise<Application[]> {
+	const rows = await sql`select * from applications where user_id = ${userId} order by created_at desc`;
+	return rows.map(toApplication);
+}
+
+/** Used only by "Import a backup", which replaces the whole history after the user confirms. */
+export async function deleteAllApplications(userId: string): Promise<void> {
+	await sql`delete from applications where user_id = ${userId}`;
+}
