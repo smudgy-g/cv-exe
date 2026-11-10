@@ -40,7 +40,8 @@ nav a, .langsw button {
 nav a { text-decoration:none; text-align:center; }
 nav a:hover, .langsw button:hover { background:var(--card); }
 nav a[aria-current="page"], .langsw button[aria-pressed="true"] { background:var(--ink); color:var(--bg); }
-.langsw { margin-left:auto; display:flex; gap:0; }
+.desktop-lang { margin-left:auto; }
+.langsw { display:flex; gap:0; }
 .langsw button { font-family:var(--mono); font-size:13px; }
 .langsw button + button { border-left:0; }
 
@@ -148,15 +149,38 @@ pre { white-space:pre-wrap; font:12px/1.5 var(--mono); background:var(--ink); co
 .hist:first-child { border-top:0; } .hist .grow { flex:1; } .hist small { color:var(--muted); font-family:var(--mono); }
 
 /* Phones: logo + language on one row, the four tabs as a 2x2 grid below; tighter padding everywhere */
+/* Phone-only header pieces, hidden on wider screens */
+.mobile-new, .menu-btn, .mobile-menu { display:none; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
 @media (max-width:640px) {
-  header.top {
-    display:grid; grid-template-columns:auto 1fr; grid-template-areas:"logo lang" "nav nav";
-    padding:0; gap:0; position:static;
+  /* Header: logo | New application … menu button; the rest opens in a panel below */
+  header.top { padding:0 10px 0 0; gap:8px; min-height:52px; }
+  header.top h1 { margin:0; }
+  header.top h1 a { padding:0 14px; font-size:16px; }
+  header.top nav, .desktop-lang { display:none; }
+  .mobile-new {
+    display:block; margin-left:auto; font:600 13px var(--mono); color:var(--ink); background:var(--bg);
+    border:1px solid var(--ink); padding:8px 10px; text-decoration:none; white-space:nowrap;
   }
-  header.top h1 { grid-area:logo; min-height:48px; margin:0; }
-  .langsw { grid-area:lang; justify-self:end; margin:0 12px 0 0; }
-  header.top nav { grid-area:nav; display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:10px 12px 12px; }
-  nav a { font-size:13px; padding:9px 6px; }
+  .mobile-new[aria-current="page"] { background:var(--ink); color:var(--bg); }
+  .menu-btn {
+    display:grid; place-items:center; width:40px; height:36px; font:700 18px/1 var(--mono);
+    background:var(--bg); color:var(--ink); border:1px solid var(--ink); cursor:pointer;
+  }
+  .menu-btn[aria-expanded="true"] { background:var(--ink); color:var(--bg); }
+  .mobile-menu {
+    display:block; position:absolute; top:100%; left:0; right:0; background:var(--card); z-index:5;
+    border-bottom:1px solid var(--ink); box-shadow:0 4px 0 var(--ink); padding:8px 12px 14px;
+  }
+  .mobile-menu > a {
+    display:block; padding:13px 6px; font:600 15px var(--mono); color:var(--ink); text-decoration:none;
+    border-bottom:1px dashed var(--muted);
+  }
+  .mobile-menu > a[aria-current="page"] { color:var(--accent2); }
+  .mobile-menu > a[aria-current="page"]::before { content:"▸ "; }
+  .menu-lang { display:flex; justify-content:space-between; align-items:center; padding:14px 6px 0; font:600 12px var(--mono); text-transform:uppercase; letter-spacing:.04em; }
+  .menu-lang .langsw button { padding:8px 16px; }
 
   main { padding:20px 12px 60px; }
   .card { padding:12px 14px 16px; margin-bottom:20px; }
