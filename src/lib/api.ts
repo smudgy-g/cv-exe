@@ -23,6 +23,17 @@ export function debounce(fn: () => void, ms: number) {
 	};
 }
 
+/** Per-device setting: document style for the CV/letter preview and PDF. */
+export const THEMES = ['classic', 'band', 'bold'] as const;
+export type Theme = (typeof THEMES)[number];
+export const themeSetting = {
+	get: (): Theme => {
+		const v = typeof localStorage === 'undefined' ? null : localStorage.getItem('cvexe.theme');
+		return THEMES.includes(v as Theme) ? (v as Theme) : 'classic';
+	},
+	set: (v: Theme) => localStorage.setItem('cvexe.theme', v)
+};
+
 /** Per-device setting: which model to ask for (empty = server default). */
 export const modelSetting = {
 	get: () => (typeof localStorage === 'undefined' ? '' : (localStorage.getItem('cvexe.model') ?? '')),

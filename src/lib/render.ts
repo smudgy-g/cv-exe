@@ -29,8 +29,11 @@ export const HEAD = {
 	en: { summary: 'Professional Summary', skills: 'Skills', exp: 'Professional Experience', edu: 'Education', lang: 'Languages', locale: 'en-GB', subj: 'Re' }
 };
 
+/** Real text separator: the styles may restyle or hide it, but text extraction (ATS) always sees it. */
+const SEP = '<span class="sep"> · </span>';
+
 export function contactLine(p: Profile): string {
-	return [p.city, p.email, p.phone, p.linkedin, p.github, p.website].filter(Boolean).map(esc).join(' &nbsp;|&nbsp; ');
+	return [p.city, p.email, p.phone, p.linkedin, p.github, p.website].filter(Boolean).map(esc).join(SEP);
 }
 
 export function renderCV(r: AiResult, p: Profile): string {
@@ -38,13 +41,16 @@ export function renderCV(r: AiResult, p: Profile): string {
 		H = HEAD[r.language] || HEAD.fr;
 	const list = (a?: string[]) => (a || []).filter(Boolean).map((x) => `<li>${esc(x)}</li>`).join('');
 	const sec = (title: string | undefined, inner: string) => (inner ? `<h2>${esc(title)}</h2>${inner}` : '');
-	const meta = (...a: (string | undefined)[]) => {
-		const s = a.filter(Boolean).map(esc).join(' | ');
-		return s ? `<div class="meta">${s}</div>` : '';
+	// Title on its own line; organisation/place and dates marked up separately so each style can lay them out.
+	const meta = (org: string | undefined, where: string | undefined, when: string | undefined) => {
+		const left = [org, where].filter(Boolean).map(esc).join(SEP);
+		if (!left && !when) return '';
+		const right = when ? `<span class="when">${esc(when)}</span>` : '';
+		return `<div class="meta"><span class="org">${left}</span>${left && right ? '<span class="sep sep-when"> · </span>' : ''}${right}</div>`;
 	};
-	let h = `<h1>${esc(p.name || '{{NAME}}')}</h1>`;
+	let h = `<div class="cvhead"><h1>${esc(p.name || '{{NAME}}')}</h1>`;
 	if (cv.headline) h += `<div class="headline">${esc(cv.headline)}</div>`;
-	h += `<div class="contact">${contactLine(p)}</div>`;
+	h += `<div class="contact">${contactLine(p)}</div></div>`;
 	h += sec(H.summary, cv.summary ? `<p>${esc(cv.summary)}</p>` : '');
 	h += sec(
 		H.skills,
@@ -52,9 +58,9 @@ export function renderCV(r: AiResult, p: Profile): string {
 			? `<ul>${cv.skills.map((s) => `<li>${s.category ? `<b>${esc(s.category)} :</b> ` : ''}${(s.items || []).map(esc).join(', ')}</li>`).join('')}</ul>`
 			: ''
 	);
-	h += sec(H.exp, (cv.experience || []).map((e) => `<h3>${esc(e.title)}${e.company ? ' — ' + esc(e.company) : ''}</h3>${meta(e.location, e.dates)}<ul>${list(e.bullets)}</ul>`).join(''));
-	h += sec(H.edu, (cv.education || []).map((e) => `<h3>${esc(e.degree)}${e.school ? ' — ' + esc(e.school) : ''}</h3>${meta(e.dates)}${e.details ? `<div>${esc(e.details)}</div>` : ''}`).join(''));
-	h += sec(H.lang, cv.languages?.length ? `<p>${cv.languages.map(esc).join(' &nbsp;|&nbsp; ')}</p>` : '');
+	h += sec(H.exp, (cv.experience || []).map((e) => `<div class="job"><h3>${esc(e.title)}</h3>${meta(e.company, e.location, e.dates)}<ul>${list(e.bullets)}</ul></div>`).join(''));
+	h += sec(H.edu, (cv.education || []).map((e) => `<div class="job"><h3>${esc(e.degree)}</h3>${meta(e.school, '', e.dates)}${e.details ? `<div class="details">${esc(e.details)}</div>` : ''}</div>`).join(''));
+	h += sec(H.lang, cv.languages?.length ? `<p>${cv.languages.map(esc).join(SEP)}</p>` : '');
 	for (const x of cv.extra_sections || []) h += sec(x.heading, `<ul>${list(x.items)}</ul>`);
 	return fill(h, p);
 }

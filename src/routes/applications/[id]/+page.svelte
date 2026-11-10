@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { bulletStats, coverage, kwTerm, norm, type Keyword } from '#lib/core.js';
 	import { HEAD } from '#lib/render.js';
-	import { debounce } from '#lib/api.js';
+	import { debounce, THEMES, themeSetting, type Theme } from '#lib/api.js';
+	import { onMount } from 'svelte';
 	import { i18n, t } from '#lib/i18n.svelte.js';
 	import { untrack } from 'svelte';
 	import type { PageProps } from './$types';
@@ -14,6 +15,8 @@
 	let letterEl = $state<HTMLDivElement>();
 	let doc = $state<'cv' | 'letter'>('cv');
 	let saveState = $state<'' | 'saving' | 'saved' | 'error'>('');
+	let theme = $state<Theme>('classic');
+	onMount(() => (theme = themeSetting.get()));
 
 	// Everything below is measured on the CV as it is now (same rules before and after tailoring).
 	let m = $state({
@@ -64,6 +67,7 @@
 	$effect(() => {
 		void doc;
 		void i18n.ui;
+		void theme; // styles change the CV's height (page count)
 		untrack(measure);
 	});
 
@@ -88,6 +92,7 @@
 		const el = doc === 'cv' ? cvEl! : letterEl!;
 		const print = document.getElementById('print')!;
 		print.innerHTML = el.innerHTML;
+		print.className = `doc theme-${theme}`;
 		for (const li of print.querySelectorAll('.toolong')) li.classList.remove('toolong');
 		const old = document.title;
 		document.title = [doc === 'cv' ? 'CV' : r.language === 'en' ? 'Cover letter' : 'Lettre de motivation', data.name, r.company].filter(Boolean).join(' - ');
@@ -119,6 +124,9 @@
 		<div class="doctabs">
 			<button class="btn" class:ghost={doc !== 'cv'} onclick={() => (doc = 'cv')}>CV</button>
 			<button class="btn" class:ghost={doc !== 'letter'} onclick={() => (doc = 'letter')}>{t('doc.letter')}</button>
+			<select class="style-select" aria-label={t('style.label')} bind:value={theme} onchange={() => themeSetting.set(theme)}>
+				{#each THEMES as th (th)}<option value={th}>{t('style.label')} : {t(`style.${th}`)}</option>{/each}
+			</select>
 			<span class="spacer"></span>
 			<span class="status" class:err={saveState === 'error'} role="status">
 				{saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : saveState === 'error' ? t('save.err') : ''}
@@ -126,8 +134,8 @@
 			<button class="btn" id="pdf" onclick={pdf}>{t('pdf')}</button>
 		</div>
 		<p class="hint">{t('edit.hint')}</p>
-		<div class="paper doc" contenteditable="true" bind:this={cvEl} hidden={doc !== 'cv'} oninput={() => edited('cv')}></div>
-		<div class="paper doc" contenteditable="true" bind:this={letterEl} hidden={doc !== 'letter'} oninput={() => edited('letter')}></div>
+		<div class="paper doc theme-{theme}" contenteditable="true" bind:this={cvEl} hidden={doc !== 'cv'} oninput={() => edited('cv')}></div>
+		<div class="paper doc theme-{theme}" contenteditable="true" bind:this={letterEl} hidden={doc !== 'letter'} oninput={() => edited('letter')}></div>
 		<details style="margin-top:16px"><summary>{t('sent')}</summary><pre>{app.sent}</pre></details>
 	</div>
 

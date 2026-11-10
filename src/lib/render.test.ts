@@ -20,7 +20,15 @@ describe('renderCV', () => {
 		expect(html).toContain('<h1>Adam &lt;G&gt;</h1>');
 		expect(html).toContain('<li>Built &lt;billing&gt;</li>');
 	});
-	it('puts contact details and links back in locally', () => expect(html).toContain('Toulouse &nbsp;|&nbsp; a@b.c &nbsp;|&nbsp; 0612345678 &nbsp;|&nbsp; https://github.com/x'));
+	it('puts contact details and links back in locally, with real text separators', () => {
+		const sep = '<span class="sep"> · </span>';
+		expect(html).toContain(['Toulouse', 'a@b.c', '0612345678', 'https://github.com/x'].join(sep));
+	});
+	it('marks up title, organisation and dates separately, in reading order', () => {
+		expect(html).toContain('<div class="job"><h3>Lead Dev</h3><div class="meta"><span class="org">Colonia</span><span class="sep sep-when"> · </span><span class="when">2026</span></div>');
+		const text = html.replace(/<[^>]+>/g, '');
+		expect(text).toContain('Lead DevColonia · 2026Built'); // ATS reads title, company, dates, then bullets
+	});
 	it('skips empty sections', () => expect(html).not.toContain('Formation'));
 });
 
