@@ -143,23 +143,26 @@
     saveEdits();
   }
 
-  function printPdf() {
-    const source = activeDocument === "cv" ? cvElement! : letterElement!;
+  // combined: cover letter then CV in one PDF, the letter's own page first.
+  function printPdf(combined = false) {
     const printContainer = document.getElementById("print")!;
 
-    printContainer.innerHTML = source.innerHTML;
+    printContainer.innerHTML = combined
+      ? `${letterElement!.innerHTML}<div class="pagebreak"></div>${cvElement!.innerHTML}`
+      : (activeDocument === "cv" ? cvElement! : letterElement!).innerHTML;
     printContainer.className = `doc theme-${theme}`;
 
     for (const highlighted of printContainer.querySelectorAll(".toolong")) {
       highlighted.classList.remove("toolong");
     }
 
-    const documentName =
-      activeDocument === "cv"
+    const letterName = result.language === "en" ? "Cover letter" : "Lettre de motivation";
+
+    const documentName = combined
+      ? `CV + ${letterName}`
+      : activeDocument === "cv"
         ? "CV"
-        : result.language === "en"
-          ? "Cover letter"
-          : "Lettre de motivation";
+        : letterName;
 
     // The browser suggests the page title as the PDF file name.
     const originalTitle = document.title;
@@ -237,7 +240,8 @@
               ? t("save.err")
               : ""}
       </span>
-      <button class="btn" id="pdf" onclick={printPdf}>{t("pdf")}</button>
+      <button class="btn" id="pdf" onclick={() => printPdf()}>{t("pdf")}</button>
+      <button class="btn ghost" onclick={() => printPdf(true)}>{t("pdf.both")}</button>
     </div>
     <p class="hint">{t("edit.hint")}</p>
     <div

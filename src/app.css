@@ -220,7 +220,8 @@ pre { white-space:pre-wrap; font:12px/1.5 var(--mono); background:var(--ink); co
 /* ---- Document styles (Style select on the results page). Greys and black only; one column; real text. ----
    print-color-adjust keeps grey bands and black bars in the PDF without ticking "Background graphics". */
 .doc { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
-.doc .job { break-inside:avoid-page; }
+/* Jobs may split across pages, but never between the title/dates and the first bullet. */
+.doc .job li:first-child { break-before:avoid; }
 .doc .meta .sep-when { padding:0 2px; }
 
 /* 1. Classic: uppercase name, grey details, spaced headings with a thin rule, dates right-aligned */
@@ -277,4 +278,5 @@ pre { white-space:pre-wrap; font:12px/1.5 var(--mono); background:var(--ink); co
   .app { display:none !important; }
   #print { display:block !important; }
   .doc h2, .doc h3 { break-after:avoid; } .doc li { break-inside:avoid; }
+  .pagebreak { break-before:page; }
 }
