@@ -14,28 +14,31 @@ export function errorText(code: string, message = ''): string {
 	}
 }
 
-/** Calls fn() at most once per `ms` of quiet; returns a function to trigger it. */
-export function debounce(fn: () => void, ms: number) {
+/** Calls callback() once `delayMs` have passed without another trigger; returns the trigger function. */
+export function debounce(callback: () => void, delayMs: number) {
 	let timer: ReturnType<typeof setTimeout>;
+
 	return () => {
 		clearTimeout(timer);
-		timer = setTimeout(fn, ms);
+		timer = setTimeout(callback, delayMs);
 	};
 }
 
 /** Per-device setting: document style for the CV/letter preview and PDF. */
 export const THEMES = ['classic', 'band', 'bold'] as const;
 export type Theme = (typeof THEMES)[number];
+
 export const themeSetting = {
 	get: (): Theme => {
-		const v = typeof localStorage === 'undefined' ? null : localStorage.getItem('cvexe.theme');
-		return THEMES.includes(v as Theme) ? (v as Theme) : 'classic';
+		const stored = typeof localStorage === 'undefined' ? null : localStorage.getItem('cvexe.theme');
+
+		return THEMES.includes(stored as Theme) ? (stored as Theme) : 'classic';
 	},
-	set: (v: Theme) => localStorage.setItem('cvexe.theme', v)
+	set: (theme: Theme) => localStorage.setItem('cvexe.theme', theme)
 };
 
 /** Per-device setting: which model to ask for (empty = server default). */
 export const modelSetting = {
 	get: () => (typeof localStorage === 'undefined' ? '' : (localStorage.getItem('cvexe.model') ?? '')),
-	set: (v: string) => localStorage.setItem('cvexe.model', v.trim())
+	set: (model: string) => localStorage.setItem('cvexe.model', model.trim())
 };

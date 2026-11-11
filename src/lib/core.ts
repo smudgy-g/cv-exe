@@ -31,59 +31,68 @@ const PLACEHOLDERS: Record<string, keyof Profile> = {
 };
 
 /** Lowercase, accents removed: "Équipe" → "equipe". */
-export function norm(s: string | null | undefined): string {
-	return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+export function normalizeText(text: string | null | undefined): string {
+	return (text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
-export function escRe(s: string): string {
-	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function esc(s: unknown): string {
-	const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-	return String(s ?? '').replace(/[&<>"']/g, (c) => map[c]);
+export function escapeHtml(value: unknown): string {
+	const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+	return String(value ?? '').replace(/[&<>"']/g, (character) => entities[character]);
 }
 
 /** Replace personal details with placeholders before anything leaves for the AI. */
-export function redact(input: string, p: Profile): { text: string; hits: number } {
+export function redact(input: string, profile: Profile): { text: string; hits: number } {
 	let text = input;
 	let hits = 0;
-	const rep = (re: RegExp, ph: string) => {
-		text = text.replace(re, () => {
+
+	const replaceAll = (pattern: RegExp, placeholder: string) => {
+		text = text.replace(pattern, () => {
 			hits++;
-			return ph;
+			return placeholder;
 		});
 	};
-	const W = '(?<![\\p{L}\\p{N}])',
-		E = '(?![\\p{L}\\p{N}])';
 
-	if (p.email?.trim()) rep(new RegExp(escRe(p.email.trim()), 'gi'), '{{EMAIL}}');
-	rep(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '{{EMAIL}}');
-	rep(/(?:https?:\/\/)?(?:[\w-]+\.)?linkedin\.com\/\S+/gi, '{{LINKEDIN}}');
-	rep(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+(?:\/[\w.-]+)*\/?/gi, '{{GITHUB}}');
+	const WORD_START = '(?<![\\p{L}\\p{N}])';
+	const WORD_END = '(?![\\p{L}\\p{N}])';
+
+	if (profile.email?.trim()) replaceAll(new RegExp(escapeRegExp(profile.email.trim()), 'gi'), '{{EMAIL}}');
+
+	replaceAll(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '{{EMAIL}}');
+	replaceAll(/(?:https?:\/\/)?(?:[\w-]+\.)?linkedin\.com\/\S+/gi, '{{LINKEDIN}}');
+	replaceAll(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+(?:\/[\w.-]+)*\/?/gi, '{{GITHUB}}');
 
 	// The user's own links, however they were typed (with or without https:// and www.)
-	for (const [key, ph] of [
+	for (const [field, placeholder] of [
 		['linkedin', 'LINKEDIN'],
 		['github', 'GITHUB'],
 		['website', 'WEBSITE']
 	] as const) {
-		const link = (p[key] || '').trim().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-		if (link.length >= 6) rep(new RegExp('(?:https?://)?(?:www\\.)?' + escRe(link) + '/?', 'gi'), `{{${ph}}}`);
+		const link = (profile[field] || '').trim().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+
+		if (link.length >= 6) replaceAll(new RegExp('(?:https?://)?(?:www\\.)?' + escapeRegExp(link) + '/?', 'gi'), `{{${placeholder}}}`);
 	}
 
-	const digits = (p.phone || '').replace(/\D/g, '');
-	if (digits.length >= 6) {
-		const tail = digits.slice(-9).split('').join('[\\s.\\-]?');
-		rep(new RegExp('(?:\\+?\\d{1,4}[\\s.\\-]?)?(?:\\(0\\)[\\s.\\-]?)?' + tail, 'g'), '{{PHONE}}');
-	}
-	rep(/(?:\+33[\s.-]?(?:\(0\)[\s.-]?)?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b/g, '{{PHONE}}');
-	rep(/\+\d{1,3}(?:[\s.-]?\d){8,12}/g, '{{PHONE}}');
+	const phoneDigits = (profile.phone || '').replace(/\D/g, '');
 
-	const name = (p.name || '').trim();
+	if (phoneDigits.length >= 6) {
+		const lastDigitsPattern = phoneDigits.slice(-9).split('').join('[\\s.\\-]?');
+
+		replaceAll(new RegExp('(?:\\+?\\d{1,4}[\\s.\\-]?)?(?:\\(0\\)[\\s.\\-]?)?' + lastDigitsPattern, 'g'), '{{PHONE}}');
+	}
+
+	replaceAll(/(?:\+33[\s.-]?(?:\(0\)[\s.-]?)?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b/g, '{{PHONE}}');
+	replaceAll(/\+\d{1,3}(?:[\s.-]?\d){8,12}/g, '{{PHONE}}');
+
+	const name = (profile.name || '').trim();
+
 	if (name) {
 		// accent-insensitive: "Édwige" also catches "Edwige", "EDWIGE"
-		const VAR: Record<string, string> = {
+		const ACCENTED_FORMS: Record<string, string> = {
 			a: 'aàâäáãå',
 			e: 'eéèêë',
 			i: 'iîïíì',
@@ -93,42 +102,64 @@ export function redact(input: string, p: Profile): { text: string; hits: number 
 			n: 'nñ',
 			y: 'yÿ'
 		};
-		const pat = (s: string) =>
-			[...norm(s)].map((ch) => (VAR[ch] ? `[${VAR[ch]}]` : ch === ' ' ? '[\\s-]+' : escRe(ch))).join('');
-		rep(new RegExp(W + pat(name) + E, 'giu'), '{{NAME}}');
-		for (const part of name.split(/[\s-]+/)) if (part.length >= 3) rep(new RegExp(W + pat(part) + E, 'giu'), '{{NAME}}');
+
+		const accentInsensitivePattern = (text: string) =>
+			[...normalizeText(text)]
+				.map((character) =>
+					ACCENTED_FORMS[character] ? `[${ACCENTED_FORMS[character]}]` : character === ' ' ? '[\\s-]+' : escapeRegExp(character)
+				)
+				.join('');
+
+		replaceAll(new RegExp(WORD_START + accentInsensitivePattern(name) + WORD_END, 'giu'), '{{NAME}}');
+
+		for (const namePart of name.split(/[\s-]+/)) {
+			if (namePart.length >= 3) replaceAll(new RegExp(WORD_START + accentInsensitivePattern(namePart) + WORD_END, 'giu'), '{{NAME}}');
+		}
 	}
+
 	return { text, hits };
 }
 
 /** Put personal details back in, on our side only. Input is already-escaped HTML. */
-export function fill(html: string, p: Profile): string {
-	return html.replace(/\{\{(\w+)\}\}/g, (m, k: string) => (PLACEHOLDERS[k] ? esc(p[PLACEHOLDERS[k]] || '') : m));
+export function fillPlaceholders(html: string, profile: Profile): string {
+	return html.replace(/\{\{(\w+)\}\}/g, (placeholder, key: string) =>
+		PLACEHOLDERS[key] ? escapeHtml(profile[PLACEHOLDERS[key]] || '') : placeholder
+	);
 }
 
-export function kwTerm(k: Keyword): string {
-	return typeof k === 'string' ? k : k.term;
+export function keywordTerm(keyword: Keyword): string {
+	return typeof keyword === 'string' ? keyword : keyword.term;
 }
 
 /** Which ad keywords appear in a text, as whole words/phrases, in any of their forms. */
 export function coverage<K extends Keyword>(keywords: K[] | undefined, text: string): { matched: K[]; missing: K[] } {
-	const t = norm(text);
-	const has = (v: string) => new RegExp('(?<![\\p{L}\\p{N}])' + escRe(v) + '(?![\\p{L}\\p{N}])', 'u').test(t);
-	const matched: K[] = [],
-		missing: K[] = [];
-	for (const k of keywords || []) {
-		const forms = (typeof k === 'string' ? [k] : [k.term, ...(k.variants || [])]).map((v) => norm(v).trim()).filter(Boolean);
-		(forms.some(has) ? matched : missing).push(k);
+	const normalizedText = normalizeText(text);
+
+	const containsWord = (form: string) =>
+		new RegExp('(?<![\\p{L}\\p{N}])' + escapeRegExp(form) + '(?![\\p{L}\\p{N}])', 'u').test(normalizedText);
+
+	const matched: K[] = [];
+	const missing: K[] = [];
+
+	for (const keyword of keywords || []) {
+		const forms = (typeof keyword === 'string' ? [keyword] : [keyword.term, ...(keyword.variants || [])])
+			.map((form) => normalizeText(form).trim())
+			.filter(Boolean);
+
+		(forms.some(containsWord) ? matched : missing).push(keyword);
 	}
+
 	return { matched, missing };
 }
 
 /** The JSON object in a model reply, ignoring any text or code fences around it. */
-export function parseJSON(s: string): any {
-	const a = s.indexOf('{'),
-		b = s.lastIndexOf('}');
-	if (a < 0 || b < a) throw new Error('BAD_JSON');
-	return JSON.parse(s.slice(a, b + 1));
+export function parseJSON(reply: string): any {
+	const start = reply.indexOf('{');
+	const end = reply.lastIndexOf('}');
+
+	if (start < 0 || end < start) throw new Error('BAD_JSON');
+
+	return JSON.parse(reply.slice(start, end + 1));
 }
 
 // Bullet quality, measured the same way before and after tailoring.
@@ -141,14 +172,17 @@ const WEAK_OPENERS = [
 
 /** Lines of a career text that are bullets (start with •, -, *, – or ·). */
 export function sourceBullets(text: string | undefined): string[] {
-	return (text || '').split('\n').filter((l) => /^\s*[•\-*–·]/.test(l));
+	return (text || '').split('\n').filter((line) => /^\s*[•\-*–·]/.test(line));
 }
 
 export function bulletStats(bullets: string[]): { total: number; action: number; quantified: number } {
-	const b = bullets.map((x) => norm(x).replace(/^[\s•\-*–·]+/, '')).filter((x) => x.length > 3);
+	const cleanBullets = bullets
+		.map((bullet) => normalizeText(bullet).replace(/^[\s•\-*–·]+/, ''))
+		.filter((bullet) => bullet.length > 3);
+
 	return {
-		total: b.length,
-		action: b.filter((x) => !WEAK_OPENERS.some((w) => x.startsWith(w))).length,
-		quantified: b.filter((x) => /\d|%|€|\$|£/.test(x)).length
+		total: cleanBullets.length,
+		action: cleanBullets.filter((bullet) => !WEAK_OPENERS.some((opener) => bullet.startsWith(opener))).length,
+		quantified: cleanBullets.filter((bullet) => /\d|%|€|\$|£/.test(bullet)).length
 	};
 }

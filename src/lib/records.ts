@@ -33,57 +33,84 @@ export interface ApplicationSummary {
 
 export class Invalid extends Error {}
 
-const LONG = 100_000; // career text, letters, ads, HTML
-const SHORT = 500; // names, links
+const LONG_TEXT_LIMIT = 100_000; // career text, letters, ads, HTML
+const SHORT_TEXT_LIMIT = 500; // names, links
 
-function text(v: unknown, max: number, field: string): string {
-	if (v == null) return '';
-	if (typeof v !== 'string') throw new Invalid(`${field} must be text`);
-	if (v.length > max) throw new Invalid(`${field} is too long`);
-	return v;
+function text(value: unknown, maxLength: number, field: string): string {
+	if (value == null) return '';
+
+	if (typeof value !== 'string') throw new Invalid(`${field} must be text`);
+
+	if (value.length > maxLength) throw new Invalid(`${field} is too long`);
+
+	return value;
 }
 
 export function toProfile(body: unknown): Required<Profile> {
 	if (!body || typeof body !== 'object') throw new Invalid('profile must be an object');
-	const b = body as Record<string, unknown>;
-	const long = new Set(['experience', 'skills', 'extraSkills', 'languages', 'letters']);
-	return Object.fromEntries(PROFILE_FIELDS.map((f) => [f, text(b[f], long.has(f) ? LONG : SHORT, f)])) as Required<Profile>;
+
+	const fields = body as Record<string, unknown>;
+	const longFields = new Set(['experience', 'skills', 'extraSkills', 'languages', 'letters']);
+
+	return Object.fromEntries(
+		PROFILE_FIELDS.map((field) => [field, text(fields[field], longFields.has(field) ? LONG_TEXT_LIMIT : SHORT_TEXT_LIMIT, field)])
+	) as Required<Profile>;
 }
 
 /** A new application (from a generation or a backup import), minus server-assigned fields. */
 export function toNewApplication(body: unknown): Omit<Application, 'id' | 'date'> & { date?: string } {
 	if (!body || typeof body !== 'object') throw new Invalid('application must be an object');
-	const b = body as Record<string, unknown>;
-	const result = b.result as AiResult;
+
+	const fields = body as Record<string, unknown>;
+	const result = fields.result as AiResult;
+
 	if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Invalid('result must be an object');
-	if (JSON.stringify(result).length > LONG * 2) throw new Invalid('result is too long');
+
+	if (JSON.stringify(result).length > LONG_TEXT_LIMIT * 2) throw new Invalid('result is too long');
+
 	const language: Lang = result.language === 'en' ? 'en' : 'fr';
-	const bb = b.beforeBullets as Application['beforeBullets'];
-	const date = typeof b.date === 'string' && !Number.isNaN(Date.parse(b.date)) ? new Date(b.date).toISOString() : undefined;
+	const beforeBullets = fields.beforeBullets as Application['beforeBullets'];
+
+	const date =
+		typeof fields.date === 'string' && !Number.isNaN(Date.parse(fields.date)) ? new Date(fields.date).toISOString() : undefined;
+
+	const beforeMatched = Array.isArray(fields.beforeMatched)
+		? fields.beforeMatched.filter((term): term is string => typeof term === 'string').slice(0, 100)
+		: [];
+
+	const validBeforeBullets =
+		beforeBullets &&
+		typeof beforeBullets === 'object' &&
+		[beforeBullets.total, beforeBullets.action, beforeBullets.quantified].every(Number.isFinite);
+
 	return {
 		date,
-		ad: text(b.ad, LONG, 'ad'),
-		sent: text(b.sent, LONG * 2, 'sent'),
+		ad: text(fields.ad, LONG_TEXT_LIMIT, 'ad'),
+		sent: text(fields.sent, LONG_TEXT_LIMIT * 2, 'sent'),
 		result: { ...result, language },
-		beforeMatched: Array.isArray(b.beforeMatched) ? b.beforeMatched.filter((x): x is string => typeof x === 'string').slice(0, 100) : [],
-		beforeBullets:
-			bb && typeof bb === 'object' && [bb.total, bb.action, bb.quantified].every(Number.isFinite)
-				? { total: bb.total, action: bb.action, quantified: bb.quantified }
-				: null,
-		cvHtml: text(b.cvHtml, LONG, 'cvHtml'),
-		letterHtml: text(b.letterHtml, LONG, 'letterHtml')
+		beforeMatched,
+		beforeBullets: validBeforeBullets
+			? { total: beforeBullets.total, action: beforeBullets.action, quantified: beforeBullets.quantified }
+			: null,
+		cvHtml: text(fields.cvHtml, LONG_TEXT_LIMIT, 'cvHtml'),
+		letterHtml: text(fields.letterHtml, LONG_TEXT_LIMIT, 'letterHtml')
 	};
 }
 
 /** Edits made in the preview. */
 export function toEdits(body: unknown): { cvHtml?: string; letterHtml?: string } {
 	if (!body || typeof body !== 'object') throw new Invalid('edits must be an object');
-	const b = body as Record<string, unknown>;
-	const out: { cvHtml?: string; letterHtml?: string } = {};
-	if ('cvHtml' in b) out.cvHtml = text(b.cvHtml, LONG, 'cvHtml');
-	if ('letterHtml' in b) out.letterHtml = text(b.letterHtml, LONG, 'letterHtml');
-	if (!Object.keys(out).length) throw new Invalid('nothing to save');
-	return out;
+
+	const fields = body as Record<string, unknown>;
+	const edits: { cvHtml?: string; letterHtml?: string } = {};
+
+	if ('cvHtml' in fields) edits.cvHtml = text(fields.cvHtml, LONG_TEXT_LIMIT, 'cvHtml');
+
+	if ('letterHtml' in fields) edits.letterHtml = text(fields.letterHtml, LONG_TEXT_LIMIT, 'letterHtml');
+
+	if (!Object.keys(edits).length) throw new Invalid('nothing to save');
+
+	return edits;
 }
 
 export type { Keyword };

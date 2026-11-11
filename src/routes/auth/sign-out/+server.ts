@@ -4,5 +4,6 @@ import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async () => {
 	await auth.signOut();
+
 	redirect(303, '/auth/sign-in');
 };

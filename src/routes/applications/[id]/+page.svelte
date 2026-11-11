@@ -1,201 +1,372 @@
 <script lang="ts">
-	import { bulletStats, coverage, kwTerm, norm, type Keyword } from '#lib/core.js';
-	import { HEAD } from '#lib/render.js';
-	import { debounce, THEMES, themeSetting, type Theme } from '#lib/api.js';
-	import { onMount } from 'svelte';
-	import { i18n, t } from '#lib/i18n.svelte.js';
-	import { untrack } from 'svelte';
-	import type { PageProps } from './$types';
+  import { onMount, untrack } from "svelte";
+  import {
+    bulletStats,
+    coverage,
+    keywordTerm,
+    normalizeText,
+    type Keyword,
+  } from "#lib/core.js";
+  import { HEADINGS } from "#lib/render.js";
+  import { debounce, THEMES, themeSetting, type Theme } from "#lib/api.js";
+  import { i18n, t } from "#lib/i18n.svelte.js";
+  import type { PageProps } from "./$types";
 
-	let { data }: PageProps = $props();
-	const app = $derived(data.app);
-	const r = $derived(app.result);
+  let { data }: PageProps = $props();
 
-	let cvEl = $state<HTMLDivElement>();
-	let letterEl = $state<HTMLDivElement>();
-	let doc = $state<'cv' | 'letter'>('cv');
-	let saveState = $state<'' | 'saving' | 'saved' | 'error'>('');
-	let theme = $state<Theme>('classic');
-	onMount(() => (theme = themeSetting.get()));
+  const application = $derived(data.application);
+  const result = $derived(application.result);
 
-	// Everything below is measured on the CV as it is now (same rules before and after tailoring).
-	let m = $state({
-		matched: [] as Keyword[],
-		missing: [] as Keyword[],
-		bullets: { total: 0, action: 0, quantified: 0 },
-		layoutOk: true,
-		missingSections: [] as string[],
-		long: 0,
-		pages: 0
-	});
+  let cvElement = $state<HTMLDivElement>();
+  let letterElement = $state<HTMLDivElement>();
+  let activeDocument = $state<"cv" | "letter">("cv");
+  let saveState = $state<"" | "saving" | "saved" | "error">("");
+  let theme = $state<Theme>("classic");
 
-	function measure() {
-		if (!cvEl) return;
-		const { matched, missing } = coverage(r.keywords, cvEl.innerText);
-		const bullets = [...cvEl.querySelectorAll<HTMLLIElement>('h3 ~ ul li')]; // experience bullets, not skills lines
-		let long = 0;
-		for (const li of cvEl.querySelectorAll('li.toolong')) li.classList.remove('toolong');
-		for (const li of bullets) {
-			const n = li.textContent?.length ?? 0;
-			const tooLong = n > 220;
-			li.classList.toggle('toolong', tooLong);
-			if (tooLong) li.title = t('chk.long.tip', n);
-			else li.removeAttribute('title');
-			long += +tooLong;
-		}
-		const H = HEAD[r.language] || HEAD.fr;
-		const heads = [...cvEl.querySelectorAll('h2')].map((h) => norm(h.textContent));
-		m = {
-			matched,
-			missing,
-			bullets: bulletStats(bullets.map((li) => li.textContent ?? '')),
-			layoutOk: !cvEl.querySelector('table, img, svg, iframe'),
-			missingSections: [H.summary, H.skills, H.exp, H.edu].filter((x) => !heads.includes(norm(x))),
-			long,
-			// A4 at 96 dpi; only measurable while the CV is visible
-			pages: cvEl.offsetHeight ? Math.max(1, Math.round((cvEl.offsetHeight / 1123) * 10) / 10) : m.pages
-		};
-	}
+  onMount(() => (theme = themeSetting.get()));
 
-	// Load the documents into the editable previews when the application changes (not on every keystroke).
-	$effect(() => {
-		if (cvEl) cvEl.innerHTML = app.cvHtml;
-		if (letterEl) letterEl.innerHTML = app.letterHtml;
-		untrack(measure); // measure reads and writes m: don't let it re-trigger this effect
-	});
-	// Re-measure when the CV becomes visible again or the page language changes (tooltips are translated).
-	$effect(() => {
-		void doc;
-		void i18n.ui;
-		void theme; // styles change the CV's height (page count)
-		untrack(measure);
-	});
+  // Everything below is measured on the CV as it is now (same rules before and after tailoring).
+  let metrics = $state({
+    matched: [] as Keyword[],
+    missing: [] as Keyword[],
+    bullets: { total: 0, action: 0, quantified: 0 },
+    layoutOk: true,
+    missingSections: [] as string[],
+    tooLongBullets: 0,
+    pages: 0,
+  });
 
-	let pending: { cvHtml?: string; letterHtml?: string } = {};
-	const flush = debounce(async () => {
-		const body = pending;
-		pending = {};
-		saveState = 'saving';
-		const res = await fetch(`/api/applications/${app.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
-		saveState = res?.ok ? 'saved' : 'error';
-		if (!res?.ok) pending = { ...body, ...pending }; // retry with the next edit
-	}, 800);
+  function measure() {
+    if (!cvElement) return;
 
-	function edited(which: 'cv' | 'letter') {
-		const el = which === 'cv' ? cvEl! : letterEl!;
-		pending[which === 'cv' ? 'cvHtml' : 'letterHtml'] = el.innerHTML;
-		if (which === 'cv') measure();
-		flush();
-	}
+    const { matched, missing } = coverage(result.keywords, cvElement.innerText);
 
-	function pdf() {
-		const el = doc === 'cv' ? cvEl! : letterEl!;
-		const print = document.getElementById('print')!;
-		print.innerHTML = el.innerHTML;
-		print.className = `doc theme-${theme}`;
-		for (const li of print.querySelectorAll('.toolong')) li.classList.remove('toolong');
-		const old = document.title;
-		document.title = [doc === 'cv' ? 'CV' : r.language === 'en' ? 'Cover letter' : 'Lettre de motivation', data.name, r.company].filter(Boolean).join(' - ');
-		window.print();
-		document.title = old;
-	}
+    // Experience bullets, not skills lines
+    const bulletItems = [
+      ...cvElement.querySelectorAll<HTMLLIElement>("h3 ~ ul li"),
+    ];
 
-	const n = $derived((r.keywords || []).length);
-	const pct = (x: number, of: number) => (of ? Math.round((100 * x) / of) : 0);
-	const before = $derived(app.beforeMatched.length);
-	const was = $derived(new Set(app.beforeMatched));
-	const undated = $derived((r.cv?.experience || []).filter((e) => !/\d/.test(e.dates || '')).length);
-	const bb = $derived(app.beforeBullets);
+    let tooLongBullets = 0;
+
+    for (const highlighted of cvElement.querySelectorAll("li.toolong")) {
+      highlighted.classList.remove("toolong");
+    }
+
+    for (const bulletItem of bulletItems) {
+      const characterCount = bulletItem.textContent?.length ?? 0;
+      const tooLong = characterCount > 220;
+
+      bulletItem.classList.toggle("toolong", tooLong);
+
+      if (tooLong) bulletItem.title = t("chk.long.tip", characterCount);
+      else bulletItem.removeAttribute("title");
+
+      if (tooLong) tooLongBullets++;
+    }
+
+    const headings = HEADINGS[result.language] || HEADINGS.fr;
+
+    const sectionHeadings = [...cvElement.querySelectorAll("h2")].map(
+      (heading) => normalizeText(heading.textContent),
+    );
+
+    const requiredHeadings = [
+      headings.summary,
+      headings.skills,
+      headings.experience,
+      headings.education,
+    ];
+
+    metrics = {
+      matched,
+      missing,
+      bullets: bulletStats(
+        bulletItems.map((bulletItem) => bulletItem.textContent ?? ""),
+      ),
+      layoutOk: !cvElement.querySelector("table, img, svg, iframe"),
+      missingSections: requiredHeadings.filter(
+        (required) => !sectionHeadings.includes(normalizeText(required)),
+      ),
+      tooLongBullets,
+      // A4 at 96 dpi; only measurable while the CV is visible
+      pages: cvElement.offsetHeight
+        ? Math.max(1, Math.round((cvElement.offsetHeight / 1123) * 10) / 10)
+        : metrics.pages,
+    };
+  }
+
+  // Load the documents into the editable previews when the application changes (not on every keystroke).
+  $effect(() => {
+    if (cvElement) cvElement.innerHTML = application.cvHtml;
+
+    if (letterElement) letterElement.innerHTML = application.letterHtml;
+
+    untrack(measure); // measure reads and writes metrics: don't let it re-trigger this effect
+  });
+
+  // Re-measure when the CV becomes visible again or the page language changes (tooltips are translated).
+  $effect(() => {
+    void activeDocument;
+    void i18n.ui;
+    void theme; // styles change the CV's height (page count)
+
+    untrack(measure);
+  });
+
+  let pendingEdits: { cvHtml?: string; letterHtml?: string } = {};
+
+  const saveEdits = debounce(async () => {
+    const edits = pendingEdits;
+
+    pendingEdits = {};
+    saveState = "saving";
+
+    const response = await fetch(`/api/applications/${application.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(edits),
+    }).catch(() => null);
+
+    saveState = response?.ok ? "saved" : "error";
+
+    if (!response?.ok) pendingEdits = { ...edits, ...pendingEdits }; // retry with the next edit
+  }, 800);
+
+  function onEdited(documentType: "cv" | "letter") {
+    if (documentType === "cv") {
+      pendingEdits.cvHtml = cvElement!.innerHTML;
+      measure();
+    } else {
+      pendingEdits.letterHtml = letterElement!.innerHTML;
+    }
+
+    saveEdits();
+  }
+
+  function printPdf() {
+    const source = activeDocument === "cv" ? cvElement! : letterElement!;
+    const printContainer = document.getElementById("print")!;
+
+    printContainer.innerHTML = source.innerHTML;
+    printContainer.className = `doc theme-${theme}`;
+
+    for (const highlighted of printContainer.querySelectorAll(".toolong")) {
+      highlighted.classList.remove("toolong");
+    }
+
+    const documentName =
+      activeDocument === "cv"
+        ? "CV"
+        : result.language === "en"
+          ? "Cover letter"
+          : "Lettre de motivation";
+
+    // The browser suggests the page title as the PDF file name.
+    const originalTitle = document.title;
+
+    document.title = [documentName, data.name, result.company]
+      .filter(Boolean)
+      .join(" - ");
+
+    window.print();
+
+    document.title = originalTitle;
+  }
+
+  const percent = (part: number, total: number) =>
+    total ? Math.round((100 * part) / total) : 0;
+
+  const keywordCount = $derived((result.keywords || []).length);
+  const matchedBeforeCount = $derived(application.beforeMatched.length);
+  const matchedBefore = $derived(new Set(application.beforeMatched));
+  const beforeBullets = $derived(application.beforeBullets);
+
+  const undatedJobs = $derived(
+    (result.cv?.experience || []).filter((job) => !/\d/.test(job.dates || ""))
+      .length,
+  );
+
+  const variantsTitle = (keyword: Keyword) =>
+    typeof keyword === "string" ? "" : (keyword.variants || []).join(", ");
 </script>
 
-<svelte:head><title>{[r.job_title, r.company].filter(Boolean).join(' — ')} · CV.exe</title></svelte:head>
+<svelte:head
+  ><title>{[result.job_title, result.company].filter(Boolean).join(" — ")} · CV.exe</title
+  ></svelte:head
+>
 
 <div class="card">
-	<h2>{t('ad.title')}</h2>
-	<div class="adbar">
-		<b class="grow">{[r.job_title, r.company].filter(Boolean).join(' — ')}</b>
-		<a class="btn ghost" href="/?from={app.id}">{t('ad.edit')}</a>
-		<a class="btn ghost" href="/">{t('ad.new')}</a>
-	</div>
+  <h2>{t("ad.title")}</h2>
+  <div class="adbar">
+    <b class="grow">{[result.job_title, result.company].filter(Boolean).join(" — ")}</b>
+    <a class="btn ghost" href="/?from={application.id}">{t("ad.edit")}</a>
+    <a class="btn ghost" href="/">{t("ad.new")}</a>
+  </div>
 </div>
 
 <div class="workspace">
-	<div class="card docpane">
-		<div class="doctabs">
-			<button class="btn" class:ghost={doc !== 'cv'} onclick={() => (doc = 'cv')}>CV</button>
-			<button class="btn" class:ghost={doc !== 'letter'} onclick={() => (doc = 'letter')}>{t('doc.letter')}</button>
-			<select class="style-select" aria-label={t('style.label')} bind:value={theme} onchange={() => themeSetting.set(theme)}>
-				{#each THEMES as th (th)}<option value={th}>{t('style.label')} : {t(`style.${th}`)}</option>{/each}
-			</select>
-			<span class="spacer"></span>
-			<span class="status" class:err={saveState === 'error'} role="status">
-				{saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : saveState === 'error' ? t('save.err') : ''}
-			</span>
-			<button class="btn" id="pdf" onclick={pdf}>{t('pdf')}</button>
-		</div>
-		<p class="hint">{t('edit.hint')}</p>
-		<div class="paper doc theme-{theme}" contenteditable="true" bind:this={cvEl} hidden={doc !== 'cv'} oninput={() => edited('cv')}></div>
-		<div class="paper doc theme-{theme}" contenteditable="true" bind:this={letterEl} hidden={doc !== 'letter'} oninput={() => edited('letter')}></div>
-		<details style="margin-top:16px"><summary>{t('sent')}</summary><pre>{app.sent}</pre></details>
-	</div>
+  <div class="card docpane">
+    <div class="doctabs">
+      <button
+        class="btn"
+        class:ghost={activeDocument !== "cv"}
+        onclick={() => (activeDocument = "cv")}>CV</button
+      >
+      <button
+        class="btn"
+        class:ghost={activeDocument !== "letter"}
+        onclick={() => (activeDocument = "letter")}>{t("doc.letter")}</button
+      >
+      <select
+        class="style-select"
+        aria-label={t("style.label")}
+        bind:value={theme}
+        onchange={() => themeSetting.set(theme)}
+      >
+        {#each THEMES as themeName (themeName)}<option value={themeName}
+            >{t("style.label")} : {t(`style.${themeName}`)}</option
+          >{/each}
+      </select>
+      <span class="spacer"></span>
+      <span class="status" class:err={saveState === "error"} role="status">
+        {saveState === "saving"
+          ? t("saving")
+          : saveState === "saved"
+            ? t("saved")
+            : saveState === "error"
+              ? t("save.err")
+              : ""}
+      </span>
+      <button class="btn" id="pdf" onclick={printPdf}>{t("pdf")}</button>
+    </div>
+    <p class="hint">{t("edit.hint")}</p>
+    <div
+      class="paper doc theme-{theme}"
+      contenteditable="true"
+      bind:this={cvElement}
+      hidden={activeDocument !== "cv"}
+      oninput={() => onEdited("cv")}
+    ></div>
+    <div
+      class="paper doc theme-{theme}"
+      contenteditable="true"
+      bind:this={letterElement}
+      hidden={activeDocument !== "letter"}
+      oninput={() => onEdited("letter")}
+    ></div>
+    <details style="margin-top:16px">
+      <summary>{t("sent")}</summary>
+      <pre>{application.sent}</pre>
+    </details>
+  </div>
 
-	<aside class="side">
-		<div class="card">
-			<h2>{t('score.title')}</h2>
-			<h3 class="sub">{t('kw.label')}</h3>
-			<div class="stat"><span class="hint">{t('kw.before')}</span><span class="score before">{before}/{n} <small>({pct(before, n)} %)</small></span></div>
-			<div class="bar"><div class="before" style:width="{pct(before, n)}%"></div></div>
-			<div class="stat"><span class="hint">{t('kw.after')}</span><span class="score">{m.matched.length}/{n} <small>({pct(m.matched.length, n)} %)</small></span></div>
-			<div class="bar"><div id="r-bar" style:width="{pct(m.matched.length, n)}%"></div></div>
-			{#if m.matched.length > before}
-				<div class="gain">{t('kw.gain', m.matched.length - before, pct(m.matched.length, n) - pct(before, n))}</div>
-			{/if}
-			<div class="chips">
-				{#each m.matched as k (kwTerm(k))}
-					<span class="chip" class:new={!was.has(kwTerm(k))} title={typeof k === 'string' ? '' : (k.variants || []).join(', ')}>{kwTerm(k)}</span>
-				{/each}
-				{#each m.missing as k (kwTerm(k))}
-					<span class="chip miss" title={typeof k === 'string' ? '' : (k.variants || []).join(', ')}>{kwTerm(k)}</span>
-				{/each}
-			</div>
-			<p class="hint" style="margin-top:8px">{t('kw.hint')}</p>
+  <aside class="side">
+    <div class="card">
+      <h2>{t("score.title")}</h2>
+      <h3 class="sub">{t("kw.label")}</h3>
+      <div class="stat">
+        <span class="hint">{t("kw.before")}</span><span class="score before"
+          >{matchedBeforeCount}/{keywordCount}
+          <small>({percent(matchedBeforeCount, keywordCount)} %)</small></span
+        >
+      </div>
+      <div class="bar">
+        <div class="before" style:width="{percent(matchedBeforeCount, keywordCount)}%"></div>
+      </div>
+      <div class="stat">
+        <span class="hint">{t("kw.after")}</span><span class="score"
+          >{metrics.matched.length}/{keywordCount}
+          <small>({percent(metrics.matched.length, keywordCount)} %)</small></span
+        >
+      </div>
+      <div class="bar">
+        <div id="r-bar" style:width="{percent(metrics.matched.length, keywordCount)}%"></div>
+      </div>
+      {#if metrics.matched.length > matchedBeforeCount}
+        <div class="gain">
+          {t(
+            "kw.gain",
+            metrics.matched.length - matchedBeforeCount,
+            percent(metrics.matched.length, keywordCount) -
+              percent(matchedBeforeCount, keywordCount),
+          )}
+        </div>
+      {/if}
+      <div class="chips">
+        {#each metrics.matched as keyword (keywordTerm(keyword))}
+          <span
+            class="chip"
+            class:new={!matchedBefore.has(keywordTerm(keyword))}
+            title={variantsTitle(keyword)}>{keywordTerm(keyword)}</span
+          >
+        {/each}
+        {#each metrics.missing as keyword (keywordTerm(keyword))}
+          <span class="chip miss" title={variantsTitle(keyword)}
+            >{keywordTerm(keyword)}</span
+          >
+        {/each}
+      </div>
+      <p class="hint" style="margin-top:8px">{t("kw.hint")}</p>
 
-			<h3 class="sub">{t('ats.title')}</h3>
-			{#each [['action', 'ats.action'], ['quantified', 'ats.quant']] as const as [key, label] (key)}
-				<div class="stat">
-					<span class="hint">{t(label)}</span>
-					<span class="score small">
-						{#if bb?.total}<small>{bb[key]}/{bb.total} →</small>{/if}
-						{m.bullets[key]}/{m.bullets.total} <small>({pct(m.bullets[key], m.bullets.total)} %)</small>
-					</span>
-				</div>
-				<div class="bar"><div style:width="{pct(m.bullets[key], m.bullets.total)}%"></div></div>
-			{/each}
-			<p class="hint" style="margin-top:8px">{t('ats.hint')}</p>
-			<ul class="checks">
-				<li class:fail={!m.layoutOk}>{t('chk.layout')}</li>
-				<li class:fail={!data.hasContact}>{t('chk.contact')}</li>
-				<li class:fail={m.missingSections.length}>
-					{m.missingSections.length ? t('chk.sections.miss', m.missingSections.join(', ')) : t('chk.sections')}
-				</li>
-				<li class:fail={undated}>{undated ? t('chk.dates.miss', undated) : t('chk.dates')}</li>
-				<li class:fail={m.long}>{m.long ? t('chk.long.miss', m.long) : t('chk.long')}</li>
-				{#if m.pages}<li class:fail={m.pages > 2}>{t('chk.pages', m.pages)}</li>{/if}
-			</ul>
-		</div>
-		<div class="card">
-			<h2>{t('gaps.title')}</h2>
-			<p class="hint">{t('gaps.hint')}</p>
-			<ul class="list">
-				{#each r.gaps || [] as g, i (i)}<li>{g}</li>{:else}<li>{t('gaps.none')}</li>{/each}
-			</ul>
-		</div>
-		<div class="card">
-			<h2>{t('changes.title')}</h2>
-			<p class="hint">{t('changes.hint')}</p>
-			<ul class="list">
-				{#each r.changes || [] as c, i (i)}<li class:star={c.startsWith('★')}>{c}</li>{:else}<li>—</li>{/each}
-			</ul>
-		</div>
-	</aside>
+      <h3 class="sub">{t("ats.title")}</h3>
+      {#each [["action", "ats.action"], ["quantified", "ats.quant"]] as const as [key, label] (key)}
+        <div class="stat">
+          <span class="hint">{t(label)}</span>
+          <span class="score small">
+            {#if beforeBullets?.total}<small
+                >{beforeBullets[key]}/{beforeBullets.total} →</small
+              >{/if}
+            {metrics.bullets[key]}/{metrics.bullets.total}
+            <small
+              >({percent(metrics.bullets[key], metrics.bullets.total)} %)</small
+            >
+          </span>
+        </div>
+        <div class="bar">
+          <div style:width="{percent(metrics.bullets[key], metrics.bullets.total)}%"></div>
+        </div>
+      {/each}
+      <p class="hint" style="margin-top:8px">{t("ats.hint")}</p>
+      <ul class="checks">
+        <li class:fail={!metrics.layoutOk}>{t("chk.layout")}</li>
+        <li class:fail={!data.hasContact}>{t("chk.contact")}</li>
+        <li class:fail={metrics.missingSections.length}>
+          {metrics.missingSections.length
+            ? t("chk.sections.miss", metrics.missingSections.join(", "))
+            : t("chk.sections")}
+        </li>
+        <li class:fail={undatedJobs}>
+          {undatedJobs ? t("chk.dates.miss", undatedJobs) : t("chk.dates")}
+        </li>
+        <li class:fail={metrics.tooLongBullets}>
+          {metrics.tooLongBullets
+            ? t("chk.long.miss", metrics.tooLongBullets)
+            : t("chk.long")}
+        </li>
+        {#if metrics.pages}<li class:fail={metrics.pages > 2}>
+            {t("chk.pages", metrics.pages)}
+          </li>{/if}
+      </ul>
+    </div>
+    <div class="card">
+      <h2>{t("gaps.title")}</h2>
+      <p class="hint">{t("gaps.hint")}</p>
+      <ul class="list">
+        {#each result.gaps || [] as gap, index (index)}<li>{gap}</li>{:else}<li>
+            {t("gaps.none")}
+          </li>{/each}
+      </ul>
+    </div>
+    <div class="card">
+      <h2>{t("changes.title")}</h2>
+      <p class="hint">{t("changes.hint")}</p>
+      <ul class="list">
+        {#each result.changes || [] as change, index (index)}<li
+            class:star={change.startsWith("★")}
+          >
+            {change}
+          </li>{:else}<li>—</li>{/each}
+      </ul>
+    </div>
+  </aside>
 </div>

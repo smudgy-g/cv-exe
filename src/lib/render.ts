@@ -1,5 +1,5 @@
 // Builds the CV and cover letter HTML: single column, plain standard headings, real text = ATS friendly.
-import { esc, fill, type Keyword, type Profile } from './core';
+import { escapeHtml, fillPlaceholders, type Keyword, type Profile } from './core';
 
 export type Lang = 'fr' | 'en';
 
@@ -24,64 +24,129 @@ export interface AiResult {
 }
 
 /** Section headings by CV language (also used by the ATS "standard sections" check). */
-export const HEAD = {
-	fr: { summary: 'Profil professionnel', skills: 'Compétences', exp: 'Expérience professionnelle', edu: 'Formation', lang: 'Langues', locale: 'fr-FR', subj: 'Objet' },
-	en: { summary: 'Professional Summary', skills: 'Skills', exp: 'Professional Experience', edu: 'Education', lang: 'Languages', locale: 'en-GB', subj: 'Re' }
+export const HEADINGS = {
+	fr: {
+		summary: 'Profil professionnel',
+		skills: 'Compétences',
+		experience: 'Expérience professionnelle',
+		education: 'Formation',
+		languages: 'Langues',
+		locale: 'fr-FR',
+		subject: 'Objet'
+	},
+	en: {
+		summary: 'Professional Summary',
+		skills: 'Skills',
+		experience: 'Professional Experience',
+		education: 'Education',
+		languages: 'Languages',
+		locale: 'en-GB',
+		subject: 'Re'
+	}
 };
 
 /** Real text separator: the styles may restyle or hide it, but text extraction (ATS) always sees it. */
-const SEP = '<span class="sep"> · </span>';
+const SEPARATOR = '<span class="sep"> · </span>';
 
-export function contactLine(p: Profile): string {
-	return [p.city, p.email, p.phone, p.linkedin, p.github, p.website].filter(Boolean).map(esc).join(SEP);
+export function contactLine(profile: Profile): string {
+	return [profile.city, profile.email, profile.phone, profile.linkedin, profile.github, profile.website]
+		.filter(Boolean)
+		.map(escapeHtml)
+		.join(SEPARATOR);
 }
 
-export function renderCV(r: AiResult, p: Profile): string {
-	const cv = r.cv || {},
-		H = HEAD[r.language] || HEAD.fr;
-	const list = (a?: string[]) => (a || []).filter(Boolean).map((x) => `<li>${esc(x)}</li>`).join('');
-	const sec = (title: string | undefined, inner: string) => (inner ? `<h2>${esc(title)}</h2>${inner}` : '');
+export function renderCV(result: AiResult, profile: Profile): string {
+	const cv = result.cv || {};
+	const headings = HEADINGS[result.language] || HEADINGS.fr;
+
+	const listItems = (items?: string[]) =>
+		(items || [])
+			.filter(Boolean)
+			.map((item) => `<li>${escapeHtml(item)}</li>`)
+			.join('');
+
+	const section = (title: string | undefined, content: string) => (content ? `<h2>${escapeHtml(title)}</h2>${content}` : '');
+
 	// Title on its own line; organisation/place and dates marked up separately so each style can lay them out.
-	const meta = (org: string | undefined, where: string | undefined, when: string | undefined) => {
-		const left = [org, where].filter(Boolean).map(esc).join(SEP);
-		if (!left && !when) return '';
-		const right = when ? `<span class="when">${esc(when)}</span>` : '';
-		return `<div class="meta"><span class="org">${left}</span>${left && right ? '<span class="sep sep-when"> · </span>' : ''}${right}</div>`;
+	const metaLine = (organisation: string | undefined, place: string | undefined, dates: string | undefined) => {
+		const left = [organisation, place].filter(Boolean).map(escapeHtml).join(SEPARATOR);
+
+		if (!left && !dates) return '';
+
+		const right = dates ? `<span class="when">${escapeHtml(dates)}</span>` : '';
+		const middle = left && right ? '<span class="sep sep-when"> · </span>' : '';
+
+		return `<div class="meta"><span class="org">${left}</span>${middle}${right}</div>`;
 	};
-	let h = `<div class="cvhead"><h1>${esc(p.name || '{{NAME}}')}</h1>`;
-	if (cv.headline) h += `<div class="headline">${esc(cv.headline)}</div>`;
-	h += `<div class="contact">${contactLine(p)}</div></div>`;
-	h += sec(H.summary, cv.summary ? `<p>${esc(cv.summary)}</p>` : '');
-	h += sec(
-		H.skills,
-		cv.skills?.length
-			? `<ul>${cv.skills.map((s) => `<li>${s.category ? `<b>${esc(s.category)} :</b> ` : ''}${(s.items || []).map(esc).join(', ')}</li>`).join('')}</ul>`
-			: ''
-	);
-	h += sec(H.exp, (cv.experience || []).map((e) => `<div class="job"><h3>${esc(e.title)}</h3>${meta(e.company, e.location, e.dates)}<ul>${list(e.bullets)}</ul></div>`).join(''));
-	h += sec(H.edu, (cv.education || []).map((e) => `<div class="job"><h3>${esc(e.degree)}</h3>${meta(e.school, '', e.dates)}${e.details ? `<div class="details">${esc(e.details)}</div>` : ''}</div>`).join(''));
-	h += sec(H.lang, cv.languages?.length ? `<p>${cv.languages.map(esc).join(SEP)}</p>` : '');
-	for (const x of cv.extra_sections || []) h += sec(x.heading, `<ul>${list(x.items)}</ul>`);
-	return fill(h, p);
+
+	const skillsList = cv.skills?.length
+		? `<ul>${cv.skills
+				.map((skill) => {
+					const category = skill.category ? `<b>${escapeHtml(skill.category)} :</b> ` : '';
+
+					return `<li>${category}${(skill.items || []).map(escapeHtml).join(', ')}</li>`;
+				})
+				.join('')}</ul>`
+		: '';
+
+	const experienceList = (cv.experience || [])
+		.map(
+			(job) =>
+				`<div class="job"><h3>${escapeHtml(job.title)}</h3>${metaLine(job.company, job.location, job.dates)}<ul>${listItems(job.bullets)}</ul></div>`
+		)
+		.join('');
+
+	const educationList = (cv.education || [])
+		.map((course) => {
+			const details = course.details ? `<div class="details">${escapeHtml(course.details)}</div>` : '';
+
+			return `<div class="job"><h3>${escapeHtml(course.degree)}</h3>${metaLine(course.school, '', course.dates)}${details}</div>`;
+		})
+		.join('');
+
+	let html = `<div class="cvhead"><h1>${escapeHtml(profile.name || '{{NAME}}')}</h1>`;
+
+	if (cv.headline) html += `<div class="headline">${escapeHtml(cv.headline)}</div>`;
+
+	html += `<div class="contact">${contactLine(profile)}</div></div>`;
+	html += section(headings.summary, cv.summary ? `<p>${escapeHtml(cv.summary)}</p>` : '');
+	html += section(headings.skills, skillsList);
+	html += section(headings.experience, experienceList);
+	html += section(headings.education, educationList);
+	html += section(headings.languages, cv.languages?.length ? `<p>${cv.languages.map(escapeHtml).join(SEPARATOR)}</p>` : '');
+
+	for (const extraSection of cv.extra_sections || []) {
+		html += section(extraSection.heading, `<ul>${listItems(extraSection.items)}</ul>`);
+	}
+
+	return fillPlaceholders(html, profile);
 }
 
-export function renderLetter(r: AiResult, p: Profile, today = new Date()): string {
-	const H = HEAD[r.language] || HEAD.fr,
-		L = r.cover_letter || {};
-	const date = today.toLocaleDateString(H.locale, { day: 'numeric', month: 'long', year: 'numeric' });
-	const where = r.language === 'fr' && p.city ? `${esc(p.city)}, le ` : '';
-	let h = `<div class="lhead"><b>${esc(p.name || '')}</b><br>${[p.city, p.email, p.phone].filter(Boolean).map(esc).join('<br>')}</div>`;
-	if (r.company) h += `<div>${esc(r.company)}</div>`;
-	h += `<div class="ldate">${where}${esc(date)}</div>`;
-	if (L.subject) h += `<div class="lsubj">${esc(H.subj)} : ${esc(L.subject)}</div>`;
-	h += (L.body || '')
+export function renderLetter(result: AiResult, profile: Profile, today = new Date()): string {
+	const headings = HEADINGS[result.language] || HEADINGS.fr;
+	const letter = result.cover_letter || {};
+
+	const date = today.toLocaleDateString(headings.locale, { day: 'numeric', month: 'long', year: 'numeric' });
+	const placePrefix = result.language === 'fr' && profile.city ? `${escapeHtml(profile.city)}, le ` : '';
+	const senderLines = [profile.city, profile.email, profile.phone].filter(Boolean).map(escapeHtml).join('<br>');
+
+	let html = `<div class="lhead"><b>${escapeHtml(profile.name || '')}</b><br>${senderLines}</div>`;
+
+	if (result.company) html += `<div>${escapeHtml(result.company)}</div>`;
+
+	html += `<div class="ldate">${placePrefix}${escapeHtml(date)}</div>`;
+
+	if (letter.subject) html += `<div class="lsubj">${escapeHtml(headings.subject)} : ${escapeHtml(letter.subject)}</div>`;
+
+	html += (letter.body || '')
 		.split(/\n\s*\n/)
-		.map((par) => `<p>${esc(par.trim()).replace(/\n/g, '<br>')}</p>`)
+		.map((paragraph) => `<p>${escapeHtml(paragraph.trim()).replace(/\n/g, '<br>')}</p>`)
 		.join('');
-	return fill(h, p);
+
+	return fillPlaceholders(html, profile);
 }
 
 /** The text the "before tailoring" keyword score is measured on. */
-export function sourceText(p: Profile): string {
-	return [p.experience, p.skills, p.languages].join('\n');
+export function sourceText(profile: Profile): string {
+	return [profile.experience, profile.skills, profile.languages].join('\n');
 }

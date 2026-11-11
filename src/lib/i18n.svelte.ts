@@ -42,14 +42,14 @@ const fr = {
 	'chk.layout': 'Une colonne, sans tableau ni image',
 	'chk.contact': 'Email et téléphone présents (Mon profil)',
 	'chk.sections': 'Sections standard : Profil, Compétences, Expérience, Formation',
-	'chk.sections.miss': (s: string) => `Section manquante : ${s}`,
+	'chk.sections.miss': (sections: string) => `Section manquante : ${sections}`,
 	'chk.dates': 'Dates indiquées pour chaque poste',
-	'chk.dates.miss': (n: number) => `${n} poste(s) sans dates`,
+	'chk.dates.miss': (count: number) => `${count} poste(s) sans dates`,
 	'chk.long': 'Puces courtes (2 lignes max)',
-	'chk.long.miss': (n: number) => `${n} puce(s) trop longue(s), surlignée(s) en rouge dans le CV : cliquez dedans pour les raccourcir`,
-	'chk.long.tip': (n: number) => `${n} caractères : visez moins de 220 (2 lignes)`,
-	'chk.pages': (n: number) => `Longueur : environ ${n} page(s) (2 max)`,
-	'kw.gain': (n: number, p: number) => `+${n} mots-clés grâce à l'adaptation (+${p} points)`,
+	'chk.long.miss': (count: number) => `${count} puce(s) trop longue(s), surlignée(s) en rouge dans le CV : cliquez dedans pour les raccourcir`,
+	'chk.long.tip': (characters: number) => `${characters} caractères : visez moins de 220 (2 lignes)`,
+	'chk.pages': (pages: number) => `Longueur : environ ${pages} page(s) (2 max)`,
+	'kw.gain': (keywords: number, points: number) => `+${keywords} mots-clés grâce à l'adaptation (+${points} points)`,
 	'kw.short': 'mots-clés',
 	'changes.title': 'Modifications apportées',
 	'changes.hint': '★ = utilise une compétence de « Autres compétences ». Vérifiez chaque point.',
@@ -87,14 +87,14 @@ const fr = {
 	'backup.hint': 'Votre profil et votre historique sont enregistrés dans votre compte. Exportez une copie de temps en temps, ou importez une sauvegarde de l’ancienne version (Easy Apply).',
 	'backup.export': 'Exporter une sauvegarde',
 	'backup.import': 'Importer une sauvegarde',
-	'backup.confirm': (n: number) => `Remplacer votre profil et votre historique par cette sauvegarde (${n} candidatures) ?`,
+	'backup.confirm': (count: number) => `Remplacer votre profil et votre historique par cette sauvegarde (${count} candidatures) ?`,
 	'backup.done': 'Sauvegarde importée.',
 	'backup.bad': "Ce fichier n'est pas une sauvegarde CV.exe valide.",
 	'backup.file': 'sauvegarde',
 	'settings.title': 'Intelligence artificielle',
 	'settings.model': 'Modèle',
 	'account.title': 'Compte',
-	'account.as': (e: string) => `Connecté en tant que ${e}`,
+	'account.as': (email: string) => `Connecté en tant que ${email}`,
 	'account.signout': 'Se déconnecter',
 	'hist.title': 'Candidatures',
 	'hist.empty': 'Aucune candidature pour le moment.',
@@ -112,13 +112,15 @@ const fr = {
 	'err.ad': "Collez le texte complet de l'annonce.",
 	'err.json': "La réponse de l'IA n'est pas lisible. Réessayez.",
 	'err.truncated': "La réponse de l'IA a été coupée (trop longue). Raccourcissez votre parcours ou vos anciennes lettres, puis réessayez.",
-	'err.ai': (m: string) => `Le service d'IA a renvoyé une erreur : ${m}`,
+	'err.ai': (message: string) => `Le service d'IA a renvoyé une erreur : ${message}`,
 	'err.net': 'Pas de connexion internet ?',
 	'err.server': 'Erreur du serveur. Réessayez dans un instant.',
 	working: 'Génération en cours… (30 à 90 secondes)'
 };
 
-type Dict = { [K in keyof typeof fr]: (typeof fr)[K] extends (...a: infer A) => string ? (...a: A) => string : string };
+type Dict = {
+	[Key in keyof typeof fr]: (typeof fr)[Key] extends (...args: infer Params) => string ? (...args: Params) => string : string;
+};
 
 const en: Dict = {
 	'nav.apply': 'New application',
@@ -160,14 +162,14 @@ const en: Dict = {
 	'chk.layout': 'Single column, no tables or images',
 	'chk.contact': 'Email and phone included (My profile)',
 	'chk.sections': 'Standard sections: Summary, Skills, Experience, Education',
-	'chk.sections.miss': (s) => `Missing section: ${s}`,
+	'chk.sections.miss': (sections) => `Missing section: ${sections}`,
 	'chk.dates': 'Dates on every job',
-	'chk.dates.miss': (n) => `${n} job(s) without dates`,
+	'chk.dates.miss': (count) => `${count} job(s) without dates`,
 	'chk.long': 'Short bullets (2 lines max)',
-	'chk.long.miss': (n) => `${n} bullet(s) too long, highlighted in red in the CV: click in them to shorten`,
-	'chk.long.tip': (n) => `${n} characters: aim for under 220 (2 lines)`,
-	'chk.pages': (n) => `Length: about ${n} page(s) (2 max)`,
-	'kw.gain': (n, p) => `+${n} keywords from tailoring (+${p} points)`,
+	'chk.long.miss': (count) => `${count} bullet(s) too long, highlighted in red in the CV: click in them to shorten`,
+	'chk.long.tip': (characters) => `${characters} characters: aim for under 220 (2 lines)`,
+	'chk.pages': (pages) => `Length: about ${pages} page(s) (2 max)`,
+	'kw.gain': (keywords, points) => `+${keywords} keywords from tailoring (+${points} points)`,
 	'kw.short': 'keywords',
 	'changes.title': 'Changes made',
 	'changes.hint': '★ = uses a skill from "Other skills". Check each item.',
@@ -205,14 +207,14 @@ const en: Dict = {
 	'backup.hint': 'Your profile and history are saved to your account. Export a copy now and then, or import a backup from the old version (Easy Apply).',
 	'backup.export': 'Export a backup',
 	'backup.import': 'Import a backup',
-	'backup.confirm': (n) => `Replace your profile and history with this backup (${n} applications)?`,
+	'backup.confirm': (count) => `Replace your profile and history with this backup (${count} applications)?`,
 	'backup.done': 'Backup imported.',
 	'backup.bad': 'This file is not a valid CV.exe backup.',
 	'backup.file': 'backup',
 	'settings.title': 'AI',
 	'settings.model': 'Model',
 	'account.title': 'Account',
-	'account.as': (e) => `Signed in as ${e}`,
+	'account.as': (email) => `Signed in as ${email}`,
 	'account.signout': 'Sign out',
 	'hist.title': 'Applications',
 	'hist.empty': 'No applications yet.',
@@ -230,33 +232,36 @@ const en: Dict = {
 	'err.ad': 'Paste the full text of the job ad.',
 	'err.json': "The AI's reply couldn't be read. Try again.",
 	'err.truncated': "The AI's reply was cut off (too long). Shorten your career text or past letters, then try again.",
-	'err.ai': (m) => `The AI service returned an error: ${m}`,
+	'err.ai': (message) => `The AI service returned an error: ${message}`,
 	'err.net': 'No internet connection?',
 	'err.server': 'Server error. Try again in a moment.',
 	working: 'Generating… (30 to 90 seconds)'
 };
 
-const T: Record<Lang, Dict> = { fr, en };
+const TRANSLATIONS: Record<Lang, Dict> = { fr, en };
+
 type Key = keyof Dict;
-type Args<K extends Key> = Dict[K] extends (...a: infer A) => string ? A : [];
+type Args<TKey extends Key> = Dict[TKey] extends (...args: infer Params) => string ? Params : [];
 
 // ponytail: module-level state is shared by every server render; safe only because SSR renders synchronously
 // and the root layout sets it from the request's cookie before anything reads it.
 export const i18n = $state({ ui: 'fr' as Lang });
 
-export function t<K extends Key>(k: K, ...a: Args<K>): string {
-	const v = T[i18n.ui][k] as string | ((...x: unknown[]) => string);
-	return typeof v === 'function' ? v(...a) : v;
+export function t<TKey extends Key>(key: TKey, ...args: Args<TKey>): string {
+	const translation = TRANSLATIONS[i18n.ui][key] as string | ((...params: unknown[]) => string);
+
+	return typeof translation === 'function' ? translation(...args) : translation;
 }
 
-export function setLang(ui: Lang) {
-	i18n.ui = ui;
-	document.cookie = `ui=${ui}; path=/; max-age=31536000; samesite=lax`;
-	document.documentElement.lang = ui;
+export function setLang(language: Lang) {
+	i18n.ui = language;
+	document.cookie = `ui=${language}; path=/; max-age=31536000; samesite=lax`;
+	document.documentElement.lang = language;
 }
 
 /** Language from the "ui" cookie, else the browser's Accept-Language. */
 export function pickLang(cookie: string | undefined, acceptLanguage: string | null): Lang {
 	if (cookie === 'fr' || cookie === 'en') return cookie;
+
 	return acceptLanguage?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }

@@ -10,10 +10,11 @@ export const auth = createAuthServer({
 	sameSite: 'lax', // 'strict' would drop the session when arriving from a link in an email or another site
 	context: () => {
 		const { request, cookies, url } = getRequestEvent();
+
 		return {
 			getCookies: () => request.headers.get('cookie') ?? '',
 			// Values arrive already encoded and sanitized by the toolkit: pass them through untouched.
-			setCookie: (name, value, options) => cookies.set(name, value, { path: '/', ...options, encode: (v) => v }),
+			setCookie: (name, value, options) => cookies.set(name, value, { path: '/', ...options, encode: (value) => value }),
 			getHeader: (name) => request.headers.get(name),
 			getOrigin: () => request.headers.get('origin') ?? url.origin,
 			getFramework: () => 'sveltekit'
@@ -22,7 +23,7 @@ export const auth = createAuthServer({
 });
 
 /** Proxies browser-side auth calls (/api/auth/*) to Neon Auth, so cookies belong to our domain. */
-export const proxy = (request: Request, path: string) =>
+export const proxyAuthRequest = (request: Request, path: string) =>
 	handleAuthProxyRequest({ request, path, baseUrl: NEON_AUTH_BASE_URL, cookieSecret: NEON_AUTH_COOKIE_SECRET, sameSite: 'lax' });
 
 export type User = { id: string; email: string; name: string };
@@ -30,6 +31,7 @@ export type User = { id: string; email: string; name: string };
 /** Who is signed in for the current request, or null. */
 export async function currentUser(): Promise<User | null> {
 	const { data } = await auth.getSession();
-	const u = data?.user;
-	return u ? { id: u.id, email: u.email, name: u.name } : null;
+	const user = data?.user;
+
+	return user ? { id: user.id, email: user.email, name: user.name } : null;
 }

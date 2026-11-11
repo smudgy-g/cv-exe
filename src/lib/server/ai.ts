@@ -25,6 +25,7 @@ const SCHEMA = `{
 
 export function buildPrompt(material: string, lang: 'auto' | 'fr' | 'en'): string {
 	const language = lang === 'fr' ? 'French' : lang === 'en' ? 'English' : 'the same language as the job ad (French or English)';
+
 	return `You are an expert CV writer and ATS optimisation specialist helping a candidate apply for a job. Produce a tailored CV and a cover letter.
 
 HARD RULES
@@ -50,21 +51,21 @@ ${SCHEMA}
 ${material}`;
 }
 
-export function buildMaterial(p: Profile, ad: string, notes: string): string {
+export function buildMaterial(profile: Profile, ad: string, notes: string): string {
 	return `============ CANDIDATE EXPERIENCE & EDUCATION ============
-${p.experience}
+${profile.experience}
 
 ============ CV SKILLS ============
-${p.skills || 'None'}
+${profile.skills || 'None'}
 
 ============ ADDITIONAL SKILLS (candidate has these; not yet on the CV) ============
-${p.extraSkills || 'None'}
+${profile.extraSkills || 'None'}
 
 ============ LANGUAGES ============
-${p.languages || 'None'}
+${profile.languages || 'None'}
 
 ============ PAST COVER LETTERS (tone and voice reference only) ============
-${p.letters || 'None'}
+${profile.letters || 'None'}
 
 ============ JOB AD ============
 ${ad}
@@ -91,22 +92,27 @@ export function parseSSE(buffer: string): { events: any[]; rest: string } {
 	const lines = buffer.split('\n');
 	const rest = lines.pop() ?? '';
 	const events = [];
+
 	for (const line of lines) {
 		if (!line.startsWith('data: ')) continue; // ": OPENROUTER PROCESSING" keep-alives and blank lines
+
 		const data = line.slice(6).trim();
+
 		if (data === '[DONE]') continue;
+
 		try {
 			events.push(JSON.parse(data));
 		} catch {
 			/* partial or malformed line: ignore */
 		}
 	}
+
 	return { events, rest };
 }
 
 /** Streams the model's answer; onProgress gets the number of characters produced so far (thinking included). */
 export async function complete(prompt: string, model: string, onProgress: (chars: number) => void): Promise<string> {
-	const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+	const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 		method: 'POST',
 		headers: { Authorization: `Bearer ${OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'X-Title': 'CV.exe' },
 		body: JSON.stringify({
@@ -117,29 +123,40 @@ export async function complete(prompt: string, model: string, onProgress: (chars
 			messages: [{ role: 'user', content: prompt }]
 		})
 	});
-	if (!res.ok || !res.body) {
-		const data = await res.json().catch(() => ({}));
-		throw new AiError('AI_ERROR', data.error?.message || `OpenRouter HTTP ${res.status}`);
+
+	if (!response.ok || !response.body) {
+		const data = await response.json().catch(() => ({}));
+
+		throw new AiError('AI_ERROR', data.error?.message || `OpenRouter HTTP ${response.status}`);
 	}
 
-	let content = '',
-		produced = 0,
-		finish: string | null = null,
-		buffer = '';
+	let content = '';
+	let charactersProduced = 0;
+	let finishReason: string | null = null;
+	let buffer = '';
+
 	const decoder = new TextDecoder();
-	for await (const chunk of res.body) {
+
+	for await (const chunk of response.body) {
 		const { events, rest } = parseSSE(buffer + decoder.decode(chunk, { stream: true }));
+
 		buffer = rest;
-		for (const ev of events) {
-			if (ev.error) throw new AiError('AI_ERROR', ev.error.message || 'AI error');
-			const choice = ev.choices?.[0];
-			const piece = choice?.delta?.content || '';
-			content += piece;
-			produced += piece.length + (choice?.delta?.reasoning?.length || 0);
-			finish = choice?.finish_reason || finish;
+
+		for (const event of events) {
+			if (event.error) throw new AiError('AI_ERROR', event.error.message || 'AI error');
+
+			const choice = event.choices?.[0];
+			const contentPiece = choice?.delta?.content || '';
+
+			content += contentPiece;
+			charactersProduced += contentPiece.length + (choice?.delta?.reasoning?.length || 0);
+			finishReason = choice?.finish_reason || finishReason;
 		}
-		onProgress(produced);
+
+		onProgress(charactersProduced);
 	}
-	if (finish === 'length') throw new AiError('TRUNCATED');
+
+	if (finishReason === 'length') throw new AiError('TRUNCATED');
+
 	return content;
 }
