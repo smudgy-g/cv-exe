@@ -186,3 +186,35 @@ export function bulletStats(bullets: string[]): { total: number; action: number;
 		quantified: cleanBullets.filter((bullet) => /\d|%|€|\$|£/.test(bullet)).length
 	};
 }
+
+/**
+ * Adds each bullet under the career-text line it belongs to (matched by text), using that line's bullet symbol.
+ * A bullet whose line is gone is added at the end rather than lost.
+ */
+export function insertBullets(text: string, additions: { after: string; bullet: string }[]): string {
+	const lines = text.split('\n');
+	const bulletsAfter = new Map<number, string[]>();
+	const unplaced: string[] = [];
+
+	for (const { after, bullet } of additions) {
+		const index = after.trim() ? lines.findIndex((line) => line.trim() === after.trim()) : -1;
+		const marker = index >= 0 ? lines[index].match(/^\s*[•\-*–·]\s*/)?.[0] : undefined;
+		const newLine = (marker ?? '• ') + bullet.trim();
+
+		if (index < 0) unplaced.push(newLine);
+		else bulletsAfter.set(index, [...(bulletsAfter.get(index) ?? []), newLine]);
+	}
+
+	return [...lines.flatMap((line, index) => [line, ...(bulletsAfter.get(index) ?? [])]), ...unplaced].join('\n');
+}
+
+/** Adds skills to a comma-separated list, skipping any already in it (same matching as keyword coverage). */
+export function appendSkills(list: string, skills: string[]): string {
+	return skills.reduce((current, skill) => {
+		const trimmed = skill.trim();
+
+		if (!trimmed || coverage([trimmed], current).matched.length) return current;
+
+		return current.trim() ? `${current.trimEnd()}, ${trimmed}` : trimmed;
+	}, list);
+}

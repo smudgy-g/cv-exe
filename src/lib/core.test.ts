@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bulletStats, coverage, fillPlaceholders, parseJSON, redact, sourceBullets } from './core';
+import { appendSkills, bulletStats, coverage, fillPlaceholders, insertBullets, parseJSON, redact, sourceBullets } from './core';
 
 describe('redact: personal details never reach the AI', () => {
 	const profile = { name: 'Édwige Colombani', email: 'edwige.c@gmail.com', phone: '06 12 34 56 78', linkedin: 'https://www.linkedin.com/in/edwige-c/' };
@@ -83,4 +83,30 @@ Plain sentence, not a bullet`;
 		expect(sourceBullets(careerText)).toHaveLength(4);
 		expect(bulletStats(sourceBullets(careerText))).toEqual({ total: 4, action: 1, quantified: 2 });
 	});
+});
+
+describe('insertBullets', () => {
+	const career = 'Dev, Acme 2022-2024\n  - Built the API\nDev, Initech 2020-2022\n• Ran releases';
+
+	it('adds under the matching line with its bullet symbol, in order, and keeps every existing line', () => {
+		const result = insertBullets(career, [
+			{ after: '- Built the API', bullet: 'Set up CI' },
+			{ after: '  - Built the API', bullet: 'Wrote tests' },
+			{ after: '• Ran releases', bullet: 'Cut deploy time' }
+		]);
+
+		expect(result).toBe('Dev, Acme 2022-2024\n  - Built the API\n  - Set up CI\n  - Wrote tests\nDev, Initech 2020-2022\n• Ran releases\n• Cut deploy time');
+	});
+
+	it('puts a bullet whose line is gone at the end instead of losing it', () => {
+		expect(insertBullets(career, [{ after: 'deleted line', bullet: 'Kept' }, { after: '', bullet: 'Also kept' }])).toBe(career + '\n• Kept\n• Also kept');
+	});
+});
+
+describe('appendSkills', () => {
+	it('appends new skills, skips ones already listed (any case, whole words only)', () => {
+		expect(appendSkills('Docker, google cloud', ['docker', 'Go', 'MCP', ' '])).toBe('Docker, google cloud, Go, MCP');
+	});
+
+	it('starts an empty list without a leading comma', () => expect(appendSkills('  ', ['MCP'])).toBe('MCP'));
 });

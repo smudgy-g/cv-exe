@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Invalid, toEdits, toNewApplication, toProfile } from './records';
+import { Invalid, toEdits, toEnhanceRequest, toNewApplication, toProfile } from './records';
 
 describe('toProfile', () => {
 	it('keeps known text fields, fills the rest with empty strings, drops unknown keys', () => {
@@ -50,4 +50,21 @@ describe('toEdits', () => {
 	it('keeps only the edited documents', () => expect(toEdits({ cvHtml: '<p>a</p>', other: 1 })).toEqual({ cvHtml: '<p>a</p>' }));
 
 	it('rejects an empty edit', () => expect(() => toEdits({})).toThrow(Invalid));
+});
+
+describe('toEnhanceRequest', () => {
+	it('keeps trimmed gaps and notes, drops a malformed model', () => {
+		expect(toEnhanceRequest({ items: [{ text: ' CI/CD ', note: ' at Acme ' }, { text: 'Docker' }], model: 'bad model' })).toEqual({
+			items: [{ text: 'CI/CD', note: 'at Acme' }, { text: 'Docker', note: '' }],
+			model: undefined
+		});
+	});
+
+	it('rejects empty, oversized or malformed lists', () => {
+		expect(() => toEnhanceRequest({ items: [] })).toThrow(Invalid);
+		expect(() => toEnhanceRequest({ items: [{ text: '' }] })).toThrow(Invalid);
+		expect(() => toEnhanceRequest({ items: ['CI/CD'] })).toThrow(Invalid);
+		expect(() => toEnhanceRequest({ items: Array(31).fill({ text: 'x' }) })).toThrow(Invalid);
+		expect(() => toEnhanceRequest(null)).toThrow(Invalid);
+	});
 });

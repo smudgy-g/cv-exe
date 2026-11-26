@@ -42,3 +42,57 @@ export const modelSetting = {
 	get: () => (typeof localStorage === 'undefined' ? '' : (localStorage.getItem('cvexe.model') ?? '')),
 	set: (model: string) => localStorage.setItem('cvexe.model', model.trim())
 };
+
+/**
+ * Runs a generation. The server streams newline-delimited JSON: progress…, then done or error.
+ * Resolves with the new application's id, or an error sentence in the page language.
+ */
+export async function generateApplication(
+	request: { ad: string; notes: string; lang: 'auto' | 'fr' | 'en' },
+	onProgress: (charactersWritten: number) => void
+): Promise<{ id: string } | { error: string }> {
+	try {
+		const response = await fetch('/api/generate', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ ...request, model: modelSetting.get() || undefined })
+		});
+
+		if (!response.ok || !response.body) {
+			const body = await response.json().catch(() => ({}));
+
+			return { error: errorText(body.message ?? '') };
+		}
+
+		const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+
+		let buffer = '';
+		let errorMessage = '';
+
+		for (;;) {
+			const { value, done } = await reader.read();
+
+			if (done) break;
+
+			buffer += value;
+
+			const lines = buffer.split('\n');
+
+			buffer = lines.pop() ?? '';
+
+			for (const line of lines) {
+				if (!line.trim()) continue;
+
+				const event = JSON.parse(line);
+
+				if (event.type === 'progress') onProgress(event.chars);
+				else if (event.type === 'done') return { id: event.app.id };
+				else if (event.type === 'error') errorMessage = errorText(event.code, event.message);
+			}
+		}
+
+		return { error: errorMessage || errorText('SERVER') };
+	} catch {
+		return { error: errorText('NET') };
+	}
+}

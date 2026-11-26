@@ -32,7 +32,8 @@ export const HEADINGS = {
 		education: 'Formation',
 		languages: 'Langues',
 		locale: 'fr-FR',
-		subject: 'Objet'
+		subject: 'Objet',
+		continued: '(suite)'
 	},
 	en: {
 		summary: 'Professional Summary',
@@ -41,7 +42,8 @@ export const HEADINGS = {
 		education: 'Education',
 		languages: 'Languages',
 		locale: 'en-GB',
-		subject: 'Re'
+		subject: 'Re',
+		continued: '(continued)'
 	}
 };
 

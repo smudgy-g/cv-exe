@@ -74,6 +74,37 @@ ${ad}
 ${notes || 'None'}`;
 }
 
+/**
+ * "Enhance CV": keywords and requirements the candidate confirms they have. The AI decides whether each is a skill
+ * (for "Other skills") or a bullet, and picks the job it goes under by line number of the numbered career text.
+ */
+export function buildEnhancePrompt(numberedCareer: string, items: { text: string; note: string }[]): string {
+	return `You help a candidate improve their master CV. Below is their CV text, one numbered line each ("12| text"), and items from a job ad (short ATS keywords or longer requirements) that the candidate confirms they really have. Some come with the candidate's own note on where or how.
+
+For each item, choose its kind:
+- "skill": a tool, technology, language, method or qualification that reads naturally in a skills list (e.g. MCP, Docker, Scrum, PMP). "text" is the skill as the ad spells it, 1-4 words.
+- "bullet": anything shown by doing rather than listed (e.g. trade-offs, ownership, mentoring, scalability, stakeholder management) or a requirement sentence. "text" is ONE new CV bullet:
+  - Base it on the candidate's note if any, and on that job's context. Never invent numbers, tools, employers or results that are not in the note or the CV. Do not just copy the item or the note: write a real achievement bullet that uses the item's wording, so ATS keyword matching succeeds.
+  - Start with a strong, specific action verb: what was done + how + the result if known. Max ~200 characters, no bullet symbol.
+  - Write it in the same language as the CV text around it.
+
+"line", for both kinds: the number of the LAST existing line (usually its last bullet) of the job where the item fits best: the job the note names, else the most recent plausible one. Use -1 if it fits no job (e.g. a degree or a spoken language).
+
+Also list every job in the CV text, most recent first: "start" is the line number of its title line, "end" of its last line.
+
+Reply with ONLY a JSON object, no markdown fences, matching:
+{
+  "additions": [{ "item": number of the item, "kind": "skill" or "bullet", "line": line number, "text": "the skill or the bullet" }],
+  "jobs": [{ "start": line number, "end": line number }]
+}
+
+============ CONFIRMED ITEMS ============
+${items.map(({ text, note }, index) => `${index}. ${text}${note ? `\n   Candidate's note: ${note}` : ''}`).join('\n')}
+
+============ CV TEXT ============
+${numberedCareer}`;
+}
+
 /** Thrown with a code the browser translates: TRUNCATED, BAD_JSON, AI_ERROR (+ the provider's message). */
 export class AiError extends Error {
 	constructor(

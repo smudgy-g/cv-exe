@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { errorText, modelSetting } from "#lib/api.js";
+  import { generateApplication } from "#lib/api.js";
   import { t } from "#lib/i18n.svelte.js";
   import type { PageProps } from "./$types";
 
@@ -28,61 +28,14 @@
     );
 
     try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ad,
-          notes,
-          lang: language,
-          model: modelSetting.get() || undefined,
-        }),
-      });
+      const outcome = await generateApplication(
+        { ad, notes, lang: language },
+        (characters) => (charactersWritten = characters),
+      );
 
-      if (!response.ok || !response.body) {
-        const body = await response.json().catch(() => ({}));
+      if ("id" in outcome) return goto(`/applications/${outcome.id}`);
 
-        errorMessage = errorText(body.message ?? "");
-
-        return;
-      }
-
-      // Newline-delimited JSON events: progress…, then done or error.
-      const reader = response.body
-        .pipeThrough(new TextDecoderStream())
-        .getReader();
-
-      let buffer = "";
-
-      for (;;) {
-        const { value, done } = await reader.read();
-
-        if (done) break;
-
-        buffer += value;
-
-        const lines = buffer.split("\n");
-
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          const event = JSON.parse(line);
-
-          if (event.type === "progress") {
-            charactersWritten = event.chars;
-          } else if (event.type === "done") {
-            return goto(`/applications/${event.app.id}`);
-          } else if (event.type === "error") {
-            errorMessage = errorText(event.code, event.message);
-          }
-        }
-      }
-
-      if (!errorMessage) errorMessage = errorText("SERVER");
-    } catch {
-      errorMessage = errorText("NET");
+      errorMessage = outcome.error;
     } finally {
       clearInterval(timer);
       busy = false;

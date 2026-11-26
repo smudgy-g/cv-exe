@@ -420,11 +420,6 @@ button.btn:disabled {
   color: var(--ok);
   border: 1px solid transparent;
 }
-.chip.miss {
-  background: var(--badbg);
-  color: var(--bad);
-  border: 1px dashed var(--bad);
-}
 .chip.new {
   border: 2px solid var(--ok);
   font-weight: 700;
@@ -518,6 +513,96 @@ ul.list li {
 }
 ul.list li.star {
   color: #8a5a00;
+}
+/* "Missing from your CV": tick what you have, optional where/how */
+.missing-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--bad);
+  font: 600 12px var(--mono);
+}
+ul.missing-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+ul.missing-list li {
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--line);
+}
+ul.missing-list li:last-child {
+  border-bottom: 0;
+}
+ul.missing-list label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+ul.missing-list label input {
+  width: auto;
+}
+ul.missing-list li.picked label span {
+  font-weight: 700;
+}
+ul.missing-list input[type="text"] {
+  margin: 6px 0 2px;
+}
+
+/* Enhance CV review: a drawer from the right, full width on phones */
+dialog.drawer {
+  margin: 0 0 0 auto;
+  width: min(560px, 100vw);
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: 0;
+  border: 0;
+  border-left: 2px solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+}
+dialog.drawer[open] {
+  display: flex;
+  flex-direction: column;
+}
+dialog.drawer::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+dialog.drawer header,
+dialog.drawer footer {
+  padding: 16px 20px;
+}
+dialog.drawer header {
+  border-bottom: 1px solid var(--line);
+}
+dialog.drawer header h2 {
+  margin: 0;
+}
+dialog.drawer footer {
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 20px 16px;
+}
+.proposal {
+  margin: 10px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line);
+}
+.proposal textarea {
+  min-height: 70px;
+  margin-top: 6px;
+}
+.proposal .row {
+  margin-top: 6px;
 }
 
 a.btn {
@@ -814,8 +899,8 @@ pre {
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
 }
-/* Keep each job / education entry whole on one page; headings stay with what follows (see @media print). */
-.doc .job {
+/* Education entries stay whole; long jobs may split between bullets (src/lib/print.ts adds "(continued)"). */
+.doc .job:not(:has(li)) {
   break-inside: avoid;
 }
 .doc .meta .sep-when {
@@ -1037,7 +1122,8 @@ pre {
     display: block !important;
   }
   .doc h2,
-  .doc h3 {
+  .doc h3,
+  .doc .meta {
     break-after: avoid;
   }
   .doc li {

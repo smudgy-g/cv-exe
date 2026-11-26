@@ -57,6 +57,26 @@ export function toProfile(body: unknown): Required<Profile> {
 	) as Required<Profile>;
 }
 
+/** Missing keywords and gaps the candidate says they really have; gaps come with a note on where or how. */
+export function toEnhanceRequest(body: unknown): { items: { text: string; note: string }[]; model?: string } {
+	const fields = (body ?? {}) as Record<string, unknown>;
+
+	if (!Array.isArray(fields.items) || !fields.items.length || fields.items.length > 30) throw new Invalid('items must be a list of 1 to 30');
+
+	const items = fields.items.map((item, index) => {
+		const entry = (item ?? {}) as Record<string, unknown>;
+		const itemText = text(entry.text, SHORT_TEXT_LIMIT, `items[${index}].text`).trim();
+
+		if (!itemText) throw new Invalid(`items[${index}].text is empty`);
+
+		return { text: itemText, note: text(entry.note, SHORT_TEXT_LIMIT, `items[${index}].note`).trim() };
+	});
+
+	const model = typeof fields.model === 'string' && /^[\w.-]+\/[\w.:-]+$/.test(fields.model) ? fields.model : undefined;
+
+	return { items, model };
+}
+
 /** A new application (from a generation or a backup import), minus server-assigned fields. */
 export function toNewApplication(body: unknown): Omit<Application, 'id' | 'date'> & { date?: string } {
 	if (!body || typeof body !== 'object') throw new Invalid('application must be an object');

@@ -1,14 +1,26 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
+  import { goto } from "$app/navigation";
   import {
+    appendSkills,
     bulletStats,
     coverage,
+    insertBullets,
     keywordTerm,
     normalizeText,
     type Keyword,
   } from "#lib/core.js";
   import { HEADINGS } from "#lib/render.js";
-  import { debounce, THEMES, themeSetting, type Theme } from "#lib/api.js";
+  import { paginate } from "#lib/print.js";
+  import {
+    debounce,
+    errorText,
+    generateApplication,
+    modelSetting,
+    THEMES,
+    themeSetting,
+    type Theme,
+  } from "#lib/api.js";
   import { i18n, t } from "#lib/i18n.svelte.js";
   import type { PageProps } from "./$types";
 
@@ -156,6 +168,8 @@
       highlighted.classList.remove("toolong");
     }
 
+    paginate(printContainer, (HEADINGS[result.language] || HEADINGS.fr).continued);
+
     const letterName = result.language === "en" ? "Cover letter" : "Lettre de motivation";
 
     const documentName = combined
@@ -174,6 +188,160 @@
     window.print();
 
     document.title = originalTitle;
+  }
+
+  // Same ad and language, fresh generation from the current profile; the result is a new application.
+  let instructions = $state("");
+  let regenerating = $state(false);
+  let regenerateError = $state("");
+  let charactersWritten = $state(0);
+
+  async function regenerate() {
+    regenerating = true;
+    regenerateError = "";
+    charactersWritten = 0;
+
+    const outcome = await generateApplication(
+      { ad: application.ad, notes: instructions, lang: result.language },
+      (characters) => (charactersWritten = characters),
+    );
+
+    regenerating = false;
+
+    if ("id" in outcome) {
+      instructions = "";
+
+      return goto(`/applications/${outcome.id}`);
+    }
+
+    regenerateError = outcome.error;
+  }
+
+  // "Enhance CV": in the "Missing from your CV" card the user ticks keywords and requirements they really have.
+  // The AI makes each a skill ("Other skills") or a bullet under the right job; the user reviews them in a drawer,
+  // then they are saved to "My profile" (and this CV regenerated from it).
+  type Proposal = { item: string; kind: "skill" | "bullet"; after: string; text: string };
+  type Job = { label: string; after: string };
+
+  let picked = $state<Record<string, string>>({}); // keyword or requirement → the user's note on where/how
+  let proposals = $state<Proposal[]>([]);
+  let jobs = $state<Job[]>([]);
+  let enhanceState = $state<"" | "writing" | "saving">("");
+  let enhanceError = $state("");
+  let enhanceNotice = $state("");
+  let drawer = $state<HTMLDialogElement>();
+  let enhanceRequest: AbortController | null = null;
+
+  const missingKeywords = $derived(metrics.missing.map(keywordTerm));
+  const missingRequirements = $derived(result.gaps || []);
+  const pickedCount = $derived(Object.keys(picked).length);
+
+  function togglePick(item: string) {
+    if (item in picked) delete picked[item];
+    else picked[item] = "";
+
+    enhanceNotice = "";
+  }
+
+  async function enhance() {
+    const request = new AbortController();
+
+    enhanceRequest = request;
+    enhanceState = "writing";
+    enhanceError = "";
+    enhanceNotice = "";
+    proposals = [];
+    drawer!.showModal();
+
+    const items = Object.entries(picked).map(([text, note]) => ({ text, note }));
+
+    const response = await fetch("/api/profile/enhance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, model: modelSetting.get() || undefined }),
+      signal: request.signal,
+    }).catch(() => null);
+
+    const body = (await response?.json().catch(() => ({}))) ?? {};
+
+    if (request.signal.aborted) return; // the drawer was closed meanwhile
+
+    enhanceState = "";
+
+    if (!response?.ok) {
+      enhanceError = response
+        ? errorText(body.message ?? "", body.detail)
+        : errorText("NET");
+
+      return;
+    }
+
+    proposals = body.additions;
+    jobs = body.jobs ?? [];
+
+    if (!proposals.length) enhanceError = t("enh.none");
+  }
+
+  // Closing the drawer (Cancel, Escape, or after saving) drops the suggestions; the ticks stay unless saved.
+  function onDrawerClose() {
+    enhanceRequest?.abort();
+    enhanceState = "";
+    enhanceError = "";
+    proposals = [];
+  }
+
+  function switchKind(proposal: Proposal) {
+    proposal.kind = proposal.kind === "skill" ? "bullet" : "skill";
+
+    if (proposal.kind === "bullet" && !proposal.after) proposal.after = jobs[0]?.after ?? "";
+  }
+
+  async function saveProposals(thenRegenerate: boolean) {
+    enhanceState = "saving";
+    enhanceError = "";
+
+    const kept = proposals.filter((proposal) => proposal.text.trim());
+
+    try {
+      const profileResponse = await fetch("/api/profile");
+
+      if (!profileResponse.ok) throw new Error();
+
+      const profile = await profileResponse.json();
+
+      profile.experience = insertBullets(
+        profile.experience || "",
+        kept
+          .filter((proposal) => proposal.kind === "bullet")
+          .map((proposal) => ({ after: proposal.after, bullet: proposal.text })),
+      );
+
+      profile.extraSkills = appendSkills(
+        profile.extraSkills || "",
+        kept
+          .filter((proposal) => proposal.kind === "skill")
+          .map((proposal) => proposal.text),
+      );
+
+      const saveResponse = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+
+      if (!saveResponse.ok) throw new Error();
+    } catch {
+      enhanceState = "";
+      enhanceError = errorText("SERVER");
+
+      return;
+    }
+
+    picked = {};
+    drawer!.close();
+
+    if (thenRegenerate) regenerate();
+    else enhanceNotice = t("enh.saved");
   }
 
   const percent = (part: number, total: number) =>
@@ -205,6 +373,34 @@
     <a class="btn ghost" href="/?from={application.id}">{t("ad.edit")}</a>
     <a class="btn ghost" href="/">{t("ad.new")}</a>
   </div>
+  <form
+    onsubmit={(event) => (event.preventDefault(), regenerate())}
+    style="margin-top:12px"
+  >
+    <label for="instructions">{t("regen.label")}</label>
+    <textarea
+      id="instructions"
+      style="min-height:60px"
+      placeholder={t("regen.ph")}
+      bind:value={instructions}
+      disabled={regenerating}
+    ></textarea>
+    <div class="row">
+      <button class="btn" disabled={regenerating}>{t("regen.go")}</button>
+      <span class="status" class:err={regenerateError} role="status"
+        >{regenerateError}</span
+      >
+    </div>
+    <p class="hint">{t("regen.hint")}</p>
+  </form>
+  {#if regenerating}
+    <div class="busy"><div></div></div>
+    <p class="hint" style="margin:10px 0 0">
+      {t("working")}{charactersWritten
+        ? ` · ${charactersWritten.toLocaleString()}`
+        : ""}
+    </p>
+  {/if}
 </div>
 
 <div class="workspace">
@@ -304,13 +500,13 @@
             title={variantsTitle(keyword)}>{keywordTerm(keyword)}</span
           >
         {/each}
-        {#each metrics.missing as keyword (keywordTerm(keyword))}
-          <span class="chip miss" title={variantsTitle(keyword)}
-            >{keywordTerm(keyword)}</span
-          >
-        {/each}
       </div>
       <p class="hint" style="margin-top:8px">{t("kw.hint")}</p>
+      {#if missingKeywords.length + missingRequirements.length}
+        <a class="missing-link" href="#missing"
+          >{t("missing.link", missingKeywords.length + missingRequirements.length)}</a
+        >
+      {/if}
 
       <h3 class="sub">{t("ats.title")}</h3>
       {#each [["action", "ats.action"], ["quantified", "ats.quant"]] as const as [key, label] (key)}
@@ -352,14 +548,57 @@
           </li>{/if}
       </ul>
     </div>
-    <div class="card">
-      <h2>{t("gaps.title")}</h2>
-      <p class="hint">{t("gaps.hint")}</p>
-      <ul class="list">
-        {#each result.gaps || [] as gap, index (index)}<li>{gap}</li>{:else}<li>
-            {t("gaps.none")}
-          </li>{/each}
-      </ul>
+    <div class="card" id="missing">
+      <h2>{t("missing.title")}</h2>
+      {#if missingKeywords.length + missingRequirements.length}
+        <p class="hint">{t("missing.hint")}</p>
+        {#each [["missing.keywords", missingKeywords], ["missing.requirements", missingRequirements]] as const as [heading, items] (heading)}
+          {#if items.length}
+            <h3 class="sub">{t(heading)}</h3>
+            <ul class="missing-list">
+              {#each items as item (item)}
+                <li class:picked={item in picked}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={item in picked}
+                      onchange={() => togglePick(item)}
+                      disabled={regenerating}
+                    />
+                    <span>{item}</span>
+                  </label>
+                  {#if item in picked}
+                    <input
+                      type="text"
+                      aria-label={t("enh.note.label")}
+                      placeholder={t("enh.note.ph")}
+                      maxlength="500"
+                      bind:value={picked[item]}
+                      disabled={regenerating}
+                    />
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        {/each}
+        <div class="row">
+          <button
+            type="button"
+            class="btn"
+            onclick={enhance}
+            disabled={!pickedCount || regenerating}>{t("enh.go", pickedCount)}</button
+          >
+          {#if pickedCount}
+            <button type="button" class="btn ghost" onclick={() => (picked = {})} disabled={regenerating}
+              >{t("enh.clear")}</button
+            >
+          {/if}
+          <span class="status" role="status">{enhanceNotice}</span>
+        </div>
+      {:else}
+        <p>{t("missing.none")}</p>
+      {/if}
     </div>
     <div class="card">
       <h2>{t("changes.title")}</h2>
@@ -374,3 +613,82 @@
     </div>
   </aside>
 </div>
+
+<dialog
+  class="drawer"
+  bind:this={drawer}
+  aria-labelledby="enhance-title"
+  onclose={onDrawerClose}
+  oncancel={(event) => enhanceState === "saving" && event.preventDefault()}
+>
+  <header>
+    <h2 id="enhance-title">{t("enh.title")}</h2>
+  </header>
+  <div class="drawer-body">
+    {#if enhanceState === "writing"}
+      <div class="busy"><div></div></div>
+      <p class="hint">{t("enh.writing")}</p>
+    {:else if proposals.length}
+      <p class="hint">{t("enh.review")}</p>
+      {#if proposals.some((proposal) => proposal.kind === "skill")}
+        <h3 class="sub">{t("enh.skills")}</h3>
+      {/if}
+      {#each proposals as proposal, index (index)}
+        {#if proposal.kind === "skill"}
+          <div class="proposal">
+            <input type="text" aria-label={proposal.item} bind:value={proposal.text} disabled={!!enhanceState} />
+            <div class="row">
+              <button type="button" class="btn ghost" onclick={() => switchKind(proposal)} disabled={!!enhanceState}
+                >{t("enh.makeBullet")}</button
+              >
+              <button type="button" class="btn ghost" onclick={() => proposals.splice(index, 1)} disabled={!!enhanceState}
+                >{t("enh.remove")}</button
+              >
+            </div>
+          </div>
+        {/if}
+      {/each}
+      {#if proposals.some((proposal) => proposal.kind === "bullet")}
+        <h3 class="sub">{t("enh.experience")}</h3>
+      {/if}
+      {#each proposals as proposal, index (index)}
+        {#if proposal.kind === "bullet"}
+          <div class="proposal">
+            <select aria-label={t("enh.job")} bind:value={proposal.after} disabled={!!enhanceState}>
+              {#each jobs as job (job.after)}<option value={job.after}>{job.label}</option>{/each}
+              {#if proposal.after && !jobs.some((job) => job.after === proposal.after)}
+                <option value={proposal.after}>{t("enh.under", proposal.after.trim())}</option>
+              {/if}
+              <option value="">{t("enh.atEnd")}</option>
+            </select>
+            <textarea aria-label={proposal.item} bind:value={proposal.text} disabled={!!enhanceState}></textarea>
+            <div class="row">
+              <button type="button" class="btn ghost" onclick={() => switchKind(proposal)} disabled={!!enhanceState}
+                >{t("enh.makeSkill")}</button
+              >
+              <button type="button" class="btn ghost" onclick={() => proposals.splice(index, 1)} disabled={!!enhanceState}
+                >{t("enh.remove")}</button
+              >
+            </div>
+          </div>
+        {/if}
+      {/each}
+    {/if}
+    <p class="status" class:err={enhanceError} role="status">
+      {enhanceError || (enhanceState === "saving" ? t("enh.saving") : "")}
+    </p>
+  </div>
+  <footer class="row">
+    {#if proposals.length}
+      <button type="button" class="btn" onclick={() => saveProposals(true)} disabled={!!enhanceState || regenerating}
+        >{t("enh.save")}</button
+      >
+      <button type="button" class="btn ghost" onclick={() => saveProposals(false)} disabled={!!enhanceState}
+        >{t("enh.saveOnly")}</button
+      >
+    {/if}
+    <button type="button" class="btn ghost" onclick={() => drawer!.close()} disabled={enhanceState === "saving"}
+      >{t("enh.cancel")}</button
+    >
+  </footer>
+</dialog>
