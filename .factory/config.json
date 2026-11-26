@@ -1,0 +1,66 @@
+{
+  "base": "main",
+  "paths": {
+    "tests": [
+      "src/**/*.test.ts",
+      "src/**/*.spec.ts"
+    ],
+    "protected": [
+      ".factory/**"
+    ],
+    "sensitive": [
+      "package.json",
+      "pnpm-lock.yaml",
+      "migrations/**",
+      "src/hooks.server.ts",
+      "src/lib/server/**"
+    ]
+  },
+  "sandbox": {
+    "kit": "shell",
+    "cpus": 2,
+    "memory": "3g",
+    "allowlist": [
+      "nodejs.org",
+      "registry.npmjs.org"
+    ],
+    "maxConcurrent": 1
+  },
+  "commands": {
+    "changedCode": [
+      "**/*.ts",
+      "**/*.js",
+      "**/*.svelte",
+      "**/*.css"
+    ],
+    "setup": [
+      [
+        "bash",
+        ".factory/sandbox-setup.sh"
+      ]
+    ],
+    "autofix": [],
+    "check": [
+      [
+        "pnpm",
+        "run",
+        "check"
+      ]
+    ],
+    "gates": [
+      [
+        "pnpm",
+        "run",
+        "check"
+      ],
+      [
+        "pnpm",
+        "test"
+      ]
+    ],
+    "env": {
+      "CI": "true",
+      "PATH": "/home/agent/node/bin:/usr/local/bin:/usr/bin:/bin"
+    }
+  }
+}
