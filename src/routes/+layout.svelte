@@ -81,6 +81,9 @@
 	<main>
 		{@render children()}
 	</main>
+	<footer class="site-footer">
+		<a href="https://adamgriff.dev" target="_blank" rel="noreferrer">{t('footer.author')}</a>
+	</footer>
 </div>
 
 <!-- Filled with the CV or letter just before printing (PDF) -->
